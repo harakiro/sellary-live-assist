@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { shows } from '@/lib/db/schema';
+import { shows, socialConnections } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { broadcastToShow } from '@/lib/realtime/server';
+import { startPolling } from '@/lib/platforms/facebook/polling';
 
 async function handler(
   req: AuthenticatedRequest,
@@ -48,6 +49,19 @@ async function handler(
     })
     .where(eq(shows.id, showId))
     .returning();
+
+  // Start FB polling if connection + liveId are set
+  if (show.platform === 'facebook' && show.connectionId && show.liveId) {
+    const [connection] = await db
+      .select()
+      .from(socialConnections)
+      .where(eq(socialConnections.id, show.connectionId))
+      .limit(1);
+
+    if (connection) {
+      startPolling(showId, show.liveId, connection.encryptedAccessToken);
+    }
+  }
 
   broadcastToShow(showId, {
     type: 'session.status',

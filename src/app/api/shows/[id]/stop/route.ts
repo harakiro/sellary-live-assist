@@ -4,6 +4,7 @@ import { shows } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { broadcastToShow } from '@/lib/realtime/server';
+import { stopPolling } from '@/lib/platforms/facebook/polling';
 
 async function handler(
   req: AuthenticatedRequest,
@@ -31,6 +32,8 @@ async function handler(
       { status: 409 },
     );
   }
+
+  stopPolling(showId);
 
   const [updated] = await db
     .update(shows)
