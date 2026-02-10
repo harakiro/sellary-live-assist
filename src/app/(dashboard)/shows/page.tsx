@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { apiFetch } from '@/lib/api-client';
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 type Show = {
   id: string;
@@ -37,6 +37,7 @@ const statusBadgeVariant = (status: string) => {
 export default function ShowsPage() {
   const [shows, setShows] = useState<Show[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   async function fetchShows() {
     const res = await apiFetch<Show[]>('/api/shows');
@@ -44,6 +45,24 @@ export default function ShowsPage() {
       setShows(res.data);
     }
     setLoading(false);
+  }
+
+  async function handleDelete(showId: string, showName: string) {
+    if (!window.confirm(`Are you sure you want to delete "${showName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(showId);
+    const res = await apiFetch<{ success: boolean }>(`/api/shows/${showId}`, {
+      method: 'DELETE',
+    });
+
+    if ('data' in res) {
+      await fetchShows();
+    } else if ('error' in res) {
+      alert(`Failed to delete show: ${res.error.message}`);
+    }
+    setDeleting(null);
   }
 
   useEffect(() => {
@@ -76,24 +95,36 @@ export default function ShowsPage() {
       ) : (
         <div className="space-y-4">
           {shows.map((show) => (
-            <Link key={show.id} href={`/shows/${show.id}`}>
-              <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-gray-900">{show.name}</h3>
-                        <Badge variant={statusBadgeVariant(show.status)}>{show.status}</Badge>
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Created {new Date(show.createdAt).toLocaleDateString()} at{' '}
-                        {new Date(show.createdAt).toLocaleTimeString()}
-                      </div>
+            <Card key={show.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <Link href={`/shows/${show.id}`} className="flex-1 cursor-pointer">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900">{show.name}</h3>
+                      <Badge variant={statusBadgeVariant(show.status)}>{show.status}</Badge>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
+                    <div className="text-sm text-gray-500">
+                      Created {new Date(show.createdAt).toLocaleDateString()} at{' '}
+                      {new Date(show.createdAt).toLocaleTimeString()}
+                    </div>
+                  </Link>
+                  {show.status === 'draft' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleDelete(show.id, show.name);
+                      }}
+                      disabled={deleting === show.id}
+                      className="ml-4 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

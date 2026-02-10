@@ -108,5 +108,47 @@ async function handlePatch(
   return NextResponse.json({ data: updated });
 }
 
+async function handleDelete(
+  req: AuthenticatedRequest,
+  context?: { params: Record<string, string> },
+) {
+  const { workspaceId } = req.auth;
+  const showId = context?.params?.id;
+
+  if (!showId) {
+    return NextResponse.json(
+      { error: { code: 'VALIDATION_ERROR', message: 'Show ID required' } },
+      { status: 400 },
+    );
+  }
+
+  const [existing] = await db
+    .select()
+    .from(shows)
+    .where(and(eq(shows.id, showId), eq(shows.workspaceId, workspaceId)))
+    .limit(1);
+
+  if (!existing) {
+    return NextResponse.json(
+      { error: { code: 'NOT_FOUND', message: 'Show not found' } },
+      { status: 404 },
+    );
+  }
+
+  if (existing.status !== 'draft') {
+    return NextResponse.json(
+      { error: { code: 'VALIDATION_ERROR', message: 'Only draft shows can be deleted' } },
+      { status: 400 },
+    );
+  }
+
+  // Delete items first (foreign key constraint), then the show
+  await db.delete(showItems).where(eq(showItems.showId, showId));
+  await db.delete(shows).where(eq(shows.id, showId));
+
+  return NextResponse.json({ data: { success: true } });
+}
+
 export const GET = withAuth(handleGet);
 export const PATCH = withAuth(handlePatch);
+export const DELETE = withAuth(handleDelete);
