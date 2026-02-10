@@ -1,15 +1,15 @@
 # Ralph Progress Tracker
 
 Feature: wire-up-dashboard-ui
-Task: FEAT-002
-Status: BUILDING
+Task: FEAT-003
+Status: READY
 
 ## Task Queue
-- [NEXT] FEAT-002: Wire up Dashboard page with live stats and recent shows
-- [ ] FEAT-003: Add show delete capability from shows list
+- [NEXT] FEAT-003: Add show delete capability from shows list
 
 ## Completed Tasks
 - [x] FEAT-001: Wire up Shows list page to fetch and display shows
+- [x] FEAT-002: Wire up Dashboard page with live stats and recent shows
 
 ## Feature Queue
 1. [BUILDING] wire-up-dashboard-ui — Wire Up Dashboard UI Pages
