@@ -1,32 +1,31 @@
 # Ralph Progress Tracker
 
-Feature: stripe-integration
-Task: FEAT-001
+Feature: websocket-realtime
+Task: FIX-001
 Status: BUILDING
+Review Cycle: 1
 
 ## Task Queue
-- [ ] FEAT-001: Integrations data model and framework scaffold
-- [ ] FEAT-002: Stripe adapter — connection, credential management, and API routes
-- [ ] FEAT-003: Invoice generation engine — from claims to Stripe invoices
-- [ ] FEAT-004: Integrations Hub UI and Stripe connection page
-- [ ] FEAT-005: Invoice management UI — show invoice panel with buyer checkout
-- [ ] FEAT-006: Tests for integrations framework and Stripe adapter
+- [ ] FIX-001: Replace standalone WS server with SSE event bus and streaming endpoint
+- [ ] FIX-002: Rewrite client hook to use SSE with proper error handling and update console
+- [ ] FIX-003: Remove WebSocket dependencies and clean up artifacts
 
 ## Completed Tasks
 (none yet)
 
 ## Feature Queue
 1. [COMPLETE] wire-up-dashboard-ui — Wire Up Dashboard UI Pages
-2. [IN PROGRESS] stripe-integration — Stripe Integration & Integrations Framework
-3. [ ] live-discovery — Live Discovery Endpoint
-4. [ ] show-activation-polish — Show Detail & Activation Polish
-5. [ ] audit-logging — Audit Logging
-6. [ ] auth-rate-limiting — Auth Rate Limiting
-7. [ ] settings-persistence — Settings Persistence
-8. [ ] error-handling — Error Handling & Edge Cases
-9. [ ] integration-tests — Integration Test Suite
-10. [ ] e2e-tests — E2E Test Suite
-11. [ ] debug-endpoints — Debug Endpoint Completion
+2. [PAUSED] stripe-integration — Stripe Integration & Integrations Framework
+3. [IN PROGRESS] websocket-realtime — Fix Real-Time Event Delivery (CRITICAL)
+4. [ ] live-discovery — Live Discovery Endpoint
+5. [ ] show-activation-polish — Show Detail & Activation Polish
+6. [ ] audit-logging — Audit Logging
+7. [ ] auth-rate-limiting — Auth Rate Limiting
+8. [ ] settings-persistence — Settings Persistence
+9. [ ] error-handling — Error Handling & Edge Cases
+10. [ ] integration-tests — Integration Test Suite
+11. [ ] e2e-tests — E2E Test Suite
+12. [ ] debug-endpoints — Debug Endpoint Completion
 
 ## Completed Features
 1. wire-up-dashboard-ui — Wire Up Dashboard UI Pages
