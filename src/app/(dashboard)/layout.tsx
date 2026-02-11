@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Tv, Link2, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Tv, Link2, Puzzle, Settings, LogOut } from 'lucide-react';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/shows', label: 'Shows', icon: Tv },
   { href: '/connections', label: 'Connections', icon: Link2 },
+  { href: '/integrations', label: 'Integrations', icon: Puzzle },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
