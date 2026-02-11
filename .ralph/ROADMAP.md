@@ -14,7 +14,7 @@ These are gaps in already-"complete" milestones that block basic usability.
 
 ### Feature 1.1: Wire Up Dashboard UI Pages
 **Priority:** HIGH | **Depends:** None
-**Status:** NOT STARTED
+**Status:** COMPLETE
 
 The Shows list page (`/shows`) is a static placeholder showing "No shows yet" without fetching from the API. The Dashboard page shows static cards. These pages need to fetch real data and display it.
 
@@ -36,51 +36,74 @@ The show detail page exists but the activation flow needs the live discovery end
 
 ---
 
-## Phase 2: Hardening & Quality (MEDIUM Priority)
+## Phase 2: Integrations & Checkout (HIGH Priority — Upsell Feature)
+
+Third-party integrations framework with Stripe as the first provider. Designed as a monetizable upsell feature.
+
+### Feature 2.0: Stripe Integration & Integrations Framework
+**Priority:** HIGH | **Depends:** None (isolated from Phase 1 work)
+**Status:** IN PROGRESS
+
+Full integrations framework with Stripe as the first adapter. Enables invoice generation from show claims and checkout link delivery. Designed with pluggable adapter pattern for future Shopify/Square/MedusaJS integrations.
+
+**Architecture:** [ARCH_stripe-integration.md](.ralph/architecture/ARCH_stripe-integration.md)
+**Tasks:** [FEAT_stripe-integration.md](.ralph/features/FEAT_stripe-integration.md)
+
+**Key deliverables:**
+- Integrations data model (integrations + invoices tables)
+- Stripe adapter (BYOK keys + OAuth connection)
+- Invoice generation engine (claims → Stripe invoices)
+- Stripe webhook handler (payment status tracking)
+- Integrations Hub UI (/integrations page)
+- Invoice management UI on show detail page
+
+---
+
+## Phase 3: Hardening & Quality (MEDIUM Priority)
 
 Maps to PRD Milestone 5.
 
-### Feature 2.1: Audit Logging
+### Feature 3.1: Audit Logging
 **Priority:** MEDIUM | **Depends:** None
 **Status:** NOT STARTED
 
 `src/lib/audit.ts` exists but audit log entries are not being written on operator actions (release, award, pause, stop, etc.). The `audit_log` table exists in the schema.
 
-### Feature 2.2: Auth Rate Limiting
+### Feature 3.2: Auth Rate Limiting
 **Priority:** MEDIUM | **Depends:** None
 **Status:** NOT STARTED
 
 PRD NFR4 requires rate limiting on auth endpoints. No rate limiting is currently implemented.
 
-### Feature 2.3: Settings Persistence
+### Feature 3.3: Settings Persistence
 **Priority:** MEDIUM | **Depends:** None
 **Status:** NOT STARTED
 
 The Settings page UI exists but the `PATCH /api/workspaces/:id` endpoint needs verification/completion. Workspace settings (claim word defaults, polling interval) need to persist.
 
-### Feature 2.4: Error Handling & Edge Cases
-**Priority:** MEDIUM | **Depends:** 2.1
+### Feature 3.4: Error Handling & Edge Cases
+**Priority:** MEDIUM | **Depends:** 3.1
 **Status:** NOT STARTED
 
 Graceful handling of network interruptions, token expiration during active shows, WebSocket reconnection with missed event catch-up via REST.
 
 ---
 
-## Phase 3: Testing & Reliability (MEDIUM Priority)
+## Phase 4: Testing & Reliability (MEDIUM Priority)
 
-### Feature 3.1: Integration Test Suite
+### Feature 4.1: Integration Test Suite
 **Priority:** MEDIUM | **Depends:** Phase 1
 **Status:** NOT STARTED
 
 Integration tests for: concurrent claim allocation, waitlist promotion, full show lifecycle, WebSocket event delivery. Test against real database.
 
-### Feature 3.2: E2E Test Suite
+### Feature 4.2: E2E Test Suite
 **Priority:** MEDIUM | **Depends:** Phase 1
 **Status:** NOT STARTED
 
 Playwright tests for: registration → login → create show → add items → activate → claims via debug endpoint → summary → export.
 
-### Feature 3.3: Debug Endpoint Completion
+### Feature 4.3: Debug Endpoint Completion
 **Priority:** LOW | **Depends:** None
 **Status:** NOT STARTED
 
@@ -88,26 +111,34 @@ Playwright tests for: registration → login → create show → add items → a
 
 ---
 
-## Phase 4: Post-MVP (LOW Priority — Future)
+## Phase 5: Post-MVP (LOW Priority — Future)
 
 From PRD Section 15. Not planned for current build cycle.
 
-- 4.1: Automated comment replies (FB)
-- 4.2: Checkout integrations (MedusaJS, Shopify, Square)
-- 4.3: Advanced claim parsing (AI/LLM, multi-variant)
-- 4.4: TikTok Live integration
-- 4.5: Mobile app
+- 5.1: Automated comment replies (FB)
+- 5.2: Additional checkout integrations (Shopify, Square, MedusaJS adapters)
+- 5.3: Advanced claim parsing (AI/LLM, multi-variant)
+- 5.4: TikTok Live integration
+- 5.5: Mobile app
 
 ---
 
 ## Dependency Graph
 
 ```
-1.1 (Wire UI) ──► 1.2 (Live Discovery) ──► 1.3 (Activation Polish)
-                                                     │
-2.1 (Audit) ──► 2.4 (Error Handling)                 │
-2.2 (Rate Limit)                                     │
-2.3 (Settings)                                       ▼
-                                              3.1 (Integration Tests)
-                                              3.2 (E2E Tests)
+1.1 (Wire UI) ✅ ──► 1.2 (Live Discovery) ──► 1.3 (Activation Polish)
+                                                      │
+                                                      ▼
+                                               4.1 (Integration Tests)
+                                               4.2 (E2E Tests)
+
+2.0 (Stripe Integration) ◄── Isolated, parallel track
+  FEAT-001 ──► FEAT-002 ──► FEAT-003 ──► FEAT-005
+                  │                          │
+                  └──► FEAT-004 ────────────┘
+                  FEAT-003 ──► FEAT-006
+
+3.1 (Audit) ──► 3.4 (Error Handling)
+3.2 (Rate Limit)
+3.3 (Settings)
 ```
