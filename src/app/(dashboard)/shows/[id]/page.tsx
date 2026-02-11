@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { apiFetch } from '@/lib/api-client';
-import { Play, Pause, Square, Plus, Monitor } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
+import { Play, Pause, Square, Plus, Monitor, Wifi, Radio, Check, Loader2, AlertTriangle, MessageSquare } from 'lucide-react';
+import { InvoicePanel } from '@/components/integrations/invoice-panel';
 
 type ShowItem = {
   id: string;
@@ -24,11 +26,30 @@ type Show = {
   id: string;
   name: string;
   status: string;
+  platform: 'facebook' | 'instagram' | null;
+  connectionId: string | null;
+  liveId: string | null;
+  liveUrl: string | null;
   claimWord: string;
   passWord: string;
   startedAt: string | null;
   items: ShowItem[];
   stats: { totalClaims: number; winners: number; waitlisted: number; uniqueBuyers: number };
+};
+
+type Connection = {
+  id: string;
+  platform: 'facebook' | 'instagram';
+  displayName: string | null;
+  externalAccountId: string;
+  status: string;
+};
+
+type LiveVideo = {
+  id: string;
+  title: string;
+  status: string;
+  permalink?: string;
 };
 
 const statusBadgeVariant = (status: string) => {
@@ -43,7 +64,9 @@ const statusBadgeVariant = (status: string) => {
 export default function ShowDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { workspace } = useAuth();
   const showId = params.id as string;
+  const autoReplyEnabled = !!(workspace?.settings as Record<string, unknown> | null)?.autoReplyEnabled;
 
   const [show, setShow] = useState<Show | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,14 +74,43 @@ export default function ShowDetailPage() {
   const [itemTitle, setItemTitle] = useState('');
   const [itemQty, setItemQty] = useState(1);
   const [addingItem, setAddingItem] = useState(false);
+  const [stripeConnected, setStripeConnected] = useState(false);
+
+  // Connection & live source state
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [selectedPlatform, setSelectedPlatform] = useState<'facebook' | 'instagram' | null>(null);
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string>('');
+  const [lives, setLives] = useState<LiveVideo[]>([]);
+  const [selectedLiveId, setSelectedLiveId] = useState<string>('');
+  const [manualLiveId, setManualLiveId] = useState('');
+  const [useManualId, setUseManualId] = useState(false);
+  const [detectingLives, setDetectingLives] = useState(false);
+  const [savingConnection, setSavingConnection] = useState(false);
+  const [showActivatePrompt, setShowActivatePrompt] = useState(false);
 
   async function fetchShow() {
     const res = await apiFetch<Show>(`/api/shows/${showId}`);
-    if ('data' in res) setShow(res.data);
+    if ('data' in res) {
+      setShow(res.data);
+      // Sync local state from show data
+      if (res.data.platform) setSelectedPlatform(res.data.platform);
+      if (res.data.connectionId) setSelectedConnectionId(res.data.connectionId);
+      if (res.data.liveId) setSelectedLiveId(res.data.liveId);
+    }
     setLoading(false);
   }
 
-  useEffect(() => { fetchShow(); }, [showId]);
+  async function fetchConnections() {
+    const res = await apiFetch<Connection[]>('/api/connections');
+    if ('data' in res) setConnections(res.data);
+  }
+
+  async function checkStripeConnection() {
+    const res = await apiFetch<{ ok: boolean }>('/api/integrations/stripe');
+    if ('data' in res) setStripeConnected(true);
+  }
+
+  useEffect(() => { fetchShow(); fetchConnections(); checkStripeConnection(); }, [showId]);
 
   async function addItem(e: FormEvent) {
     e.preventDefault();
@@ -78,6 +130,42 @@ export default function ShowDetailPage() {
     await apiFetch(`/api/shows/${showId}/${action}`, { method: 'POST' });
     fetchShow();
   }
+
+  async function detectLives() {
+    if (!selectedConnectionId) return;
+    setDetectingLives(true);
+    setLives([]);
+    const res = await apiFetch<LiveVideo[]>(`/api/connections/${selectedConnectionId}/lives`);
+    if ('data' in res) {
+      setLives(res.data);
+      if (res.data.length === 0) setUseManualId(true);
+    }
+    setDetectingLives(false);
+  }
+
+  async function saveConnection() {
+    const liveId = useManualId ? manualLiveId : selectedLiveId;
+    if (!selectedPlatform || !selectedConnectionId) return;
+    setSavingConnection(true);
+    await apiFetch(`/api/shows/${showId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        platform: selectedPlatform,
+        connectionId: selectedConnectionId,
+        liveId: liveId || undefined,
+      }),
+    });
+    setSavingConnection(false);
+    fetchShow();
+  }
+
+  const filteredConnections = connections.filter(
+    (c) => c.platform === selectedPlatform && c.status === 'active',
+  );
+
+  const connectedAccount = show?.connectionId
+    ? connections.find((c) => c.id === show.connectionId)
+    : null;
 
   if (loading) {
     return <div className="flex items-center justify-center py-12">
@@ -99,11 +187,24 @@ export default function ShowDetailPage() {
           </div>
           <p className="text-gray-500 mt-1">
             Claim: &quot;{show.claimWord}&quot; &middot; Pass: &quot;{show.passWord}&quot;
+            <span className={`inline-flex items-center gap-1 ml-3 text-xs font-medium ${autoReplyEnabled ? 'text-green-600' : 'text-gray-400'}`}>
+              <MessageSquare className="h-3 w-3" />
+              Auto-reply: {autoReplyEnabled ? 'On' : 'Off'}
+            </span>
           </p>
         </div>
         <div className="flex gap-2">
           {(show.status === 'draft' || show.status === 'paused') && (
-            <Button onClick={() => lifecycleAction('activate')} size="sm">
+            <Button
+              onClick={() => {
+                if (show.status === 'draft' && (!show.connectionId || !show.liveId)) {
+                  setShowActivatePrompt(true);
+                  return;
+                }
+                lifecycleAction('activate');
+              }}
+              size="sm"
+            >
               <Play className="h-4 w-4 mr-1" /> {show.status === 'draft' ? 'Start Show' : 'Resume'}
             </Button>
           )}
@@ -125,6 +226,232 @@ export default function ShowDetailPage() {
         </div>
       </div>
 
+      {/* Activate confirmation prompt */}
+      {showActivatePrompt && (
+        <div className="mb-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">
+                No connection or live source configured
+              </p>
+              <p className="text-sm text-amber-700 mt-1">
+                You can set up a connection now, or start the show without one and add it later.
+              </p>
+              <div className="flex gap-2 mt-3">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setShowActivatePrompt(false);
+                    document.getElementById('connection-card')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  Set Up Connection
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setShowActivatePrompt(false);
+                    lifecycleAction('activate');
+                  }}
+                >
+                  Start Without Connection
+                </Button>
+                <button
+                  type="button"
+                  className="ml-2 text-sm text-amber-600 underline"
+                  onClick={() => setShowActivatePrompt(false)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connection & Live Source */}
+      {(show.status === 'draft' || show.status === 'active') && (
+        <Card id="connection-card" className="mb-8">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Wifi className="h-5 w-5" /> Connection &amp; Live Source
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Warning banner for active shows without connection */}
+            {show.status === 'active' && !show.connectionId && (
+              <div className="flex items-center gap-2 text-sm bg-amber-50 text-amber-700 border border-amber-200 rounded-md px-3 py-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>
+                  This show is active but has no connection. Comments won&apos;t be monitored until a live source is configured.
+                </span>
+              </div>
+            )}
+
+            {/* Already connected summary */}
+            {connectedAccount && (
+              <div className="flex items-center gap-2 text-sm bg-green-50 text-green-700 rounded-md px-3 py-2">
+                <Check className="h-4 w-4" />
+                <span>
+                  Connected: {connectedAccount.displayName ?? connectedAccount.externalAccountId}
+                  {show.liveId && <> &rarr; Live ID: {show.liveId}</>}
+                </span>
+              </div>
+            )}
+
+            {/* Platform selector */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Platform</label>
+              <div className="flex gap-2">
+                {(['facebook', 'instagram'] as const).map((p) => (
+                  <Button
+                    key={p}
+                    type="button"
+                    size="sm"
+                    variant={selectedPlatform === p ? 'default' : 'outline'}
+                    onClick={() => {
+                      setSelectedPlatform(p);
+                      setSelectedConnectionId('');
+                      setLives([]);
+                      setSelectedLiveId('');
+                      setUseManualId(false);
+                    }}
+                  >
+                    {p === 'facebook' ? 'Facebook' : 'Instagram'}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Connection selector */}
+            {selectedPlatform && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Account</label>
+                {filteredConnections.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No active {selectedPlatform} connections.{' '}
+                    <Link href="/connections" className="text-brand-600 underline">
+                      Connect a page
+                    </Link>
+                  </p>
+                ) : (
+                  <select
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-brand-500"
+                    value={selectedConnectionId}
+                    onChange={(e) => {
+                      setSelectedConnectionId(e.target.value);
+                      setLives([]);
+                      setSelectedLiveId('');
+                      setUseManualId(false);
+                    }}
+                  >
+                    <option value="">Select a connected page...</option>
+                    {filteredConnections.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.displayName ?? c.externalAccountId}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
+            {/* Detect lives */}
+            {selectedConnectionId && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Live Video</label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={detectLives}
+                  disabled={detectingLives}
+                >
+                  {detectingLives ? (
+                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Detecting...</>
+                  ) : (
+                    <><Radio className="h-4 w-4 mr-1" /> Detect Active Lives</>
+                  )}
+                </Button>
+
+                {/* Live list */}
+                {lives.length > 0 && !useManualId && (
+                  <div className="mt-2 space-y-1">
+                    {lives.map((live) => (
+                      <label
+                        key={live.id}
+                        className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer ${
+                          selectedLiveId === live.id ? 'border-brand-500 bg-brand-50' : 'border-gray-200'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="liveVideo"
+                          value={live.id}
+                          checked={selectedLiveId === live.id}
+                          onChange={() => setSelectedLiveId(live.id)}
+                          className="text-brand-600"
+                        />
+                        <span className="font-medium">{live.title}</span>
+                        <Badge variant="success" className="ml-auto text-xs">LIVE</Badge>
+                      </label>
+                    ))}
+                    <button
+                      type="button"
+                      className="text-xs text-gray-500 underline mt-1"
+                      onClick={() => setUseManualId(true)}
+                    >
+                      Enter ID manually instead
+                    </button>
+                  </div>
+                )}
+
+                {/* Manual ID input */}
+                {useManualId && (
+                  <div className="mt-2">
+                    {lives.length === 0 && (
+                      <p className="text-xs text-gray-500 mb-1">
+                        No active broadcasts found. Enter a live video ID manually:
+                      </p>
+                    )}
+                    <Input
+                      placeholder="Live video ID (e.g. 123456789)"
+                      value={manualLiveId}
+                      onChange={(e) => setManualLiveId(e.target.value)}
+                    />
+                    {lives.length > 0 && (
+                      <button
+                        type="button"
+                        className="text-xs text-gray-500 underline mt-1"
+                        onClick={() => { setUseManualId(false); setManualLiveId(''); }}
+                      >
+                        Select from detected lives instead
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Save button */}
+            {selectedPlatform && selectedConnectionId && (
+              <Button
+                onClick={saveConnection}
+                disabled={savingConnection}
+              >
+                {savingConnection ? (
+                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Saving...</>
+                ) : (
+                  'Save Connection'
+                )}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4 mb-8">
         {[
@@ -141,6 +468,13 @@ export default function ShowDetailPage() {
           </Card>
         ))}
       </div>
+
+      {/* Invoices (when Stripe connected and show has claims) */}
+      {stripeConnected && show.stats.totalClaims > 0 && (
+        <div className="mb-8">
+          <InvoicePanel showId={showId} hasClaims={show.stats.totalClaims > 0} />
+        </div>
+      )}
 
       {/* Add Item Form */}
       {show.status === 'draft' && (
