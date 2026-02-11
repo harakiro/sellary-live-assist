@@ -41,32 +41,31 @@ Also adds the `price` column to `show_items` (integer, nullable, cents) to suppo
 
 ---
 
-### FEAT-002: Stripe adapter — connection, credential management, and API routes
+### FEAT-002: Stripe adapter — BYOK connection, credential management, and API routes
 
 **Status:** TODO
 **Depends:** FEAT-001
-**Size:** L
+**Size:** M
 
 **Description:**
-Implement the Stripe adapter with both connection methods (BYOK API keys and Stripe Connect OAuth). Includes credential encryption/decryption using the existing AES-256-GCM system, connection testing, and all integration management API routes.
+Implement the Stripe adapter with BYOK (Bring Your Own Keys) connection. Operator provides their own Stripe Secret Key and Publishable Key. Credentials are encrypted using the existing AES-256-GCM system before storage.
+
+Stripe Connect OAuth is deferred to a future iteration — it requires registering a Stripe platform application and going through Stripe's approval process.
 
 API routes:
 - `GET /api/integrations` — list available integrations with connection status
 - `POST /api/integrations/stripe/connect` — connect via BYOK keys (accepts `{ secretKey, publishableKey }`)
-- `POST /api/integrations/stripe/connect/oauth/start` — initiate Stripe Connect OAuth
-- `GET /api/integrations/stripe/connect/oauth/callback` — handle OAuth callback
 - `DELETE /api/integrations/stripe` — disconnect
 - `GET /api/integrations/stripe/test` — test connection health
 
-The adapter validates keys by calling `stripe.accounts.retrieve()` and stores credentials encrypted. Disconnect revokes OAuth tokens (if applicable) and soft-deletes the integration record.
+The adapter validates keys by making a test call to the Stripe API (e.g. `stripe.balance.retrieve()`) and stores credentials encrypted on success. Disconnect clears the encrypted credentials and marks the integration inactive.
 
 **Acceptance Criteria:**
 - [ ] BYOK: operator provides Stripe secret key + publishable key, stored encrypted, connection marked active
-- [ ] OAuth: full Stripe Connect OAuth flow works (redirect → callback → store tokens)
+- [ ] Key validation: invalid keys are rejected with a clear error before storing
 - [ ] `GET /api/integrations` returns all available integrations with `connected: boolean` for each
 - [ ] `GET /api/integrations/stripe/test` calls Stripe API and returns health status
 - [ ] `DELETE /api/integrations/stripe` removes credentials and marks integration inactive
-- [ ] Invalid/expired keys return clear error messages
 - [ ] Credentials never logged or returned in API responses
 - [ ] All routes protected by auth middleware
 
@@ -75,10 +74,8 @@ The adapter validates keys by calling `stripe.accounts.retrieve()` and stores cr
 - Create: `src/lib/integrations/stripe/types.ts`
 - Create: `src/app/api/integrations/route.ts`
 - Create: `src/app/api/integrations/stripe/connect/route.ts`
-- Create: `src/app/api/integrations/stripe/connect/oauth/start/route.ts`
-- Create: `src/app/api/integrations/stripe/connect/oauth/callback/route.ts`
 - Create: `src/app/api/integrations/stripe/route.ts` (DELETE + GET test)
-- Modify: `.env.example` (add Stripe env vars)
+- Modify: `.env.example` (add Stripe webhook secret env var)
 
 ---
 
@@ -146,9 +143,8 @@ Build the Integrations Hub page (`/integrations`) and the Stripe connection/mana
 - Future: locked tiles with "Available on Pro" for tier gating
 
 **Stripe Page** (`/integrations/stripe`):
-- Connection method toggle: "Use your API keys" vs "Connect with Stripe" (OAuth)
-- BYOK: Secret Key + Publishable Key input fields, "Connect" button
-- OAuth: "Connect with Stripe" button (redirect flow)
+- Secret Key + Publishable Key input fields, "Connect" button
+- Key validation feedback (valid/invalid) on submit
 - When connected: status indicator, test connection button, settings, disconnect button
 - Settings: default currency, invoice memo template
 
@@ -158,8 +154,7 @@ Build the Integrations Hub page (`/integrations`) and the Stripe connection/mana
 **Acceptance Criteria:**
 - [ ] `/integrations` page shows tile grid with Stripe and Coming Soon tiles
 - [ ] Stripe tile shows correct connection status (connected vs not)
-- [ ] `/integrations/stripe` allows BYOK key entry and connection
-- [ ] `/integrations/stripe` shows OAuth connect button
+- [ ] `/integrations/stripe` allows BYOK key entry and connection with validation
 - [ ] Connected state shows status, test button, settings, disconnect
 - [ ] Sidebar navigation includes "Integrations" link with appropriate icon
 - [ ] Pages are responsive and match existing UI style
@@ -168,7 +163,7 @@ Build the Integrations Hub page (`/integrations`) and the Stripe connection/mana
 - Create: `src/app/(dashboard)/integrations/page.tsx`
 - Create: `src/app/(dashboard)/integrations/stripe/page.tsx`
 - Create: `src/components/integrations/integration-tile.tsx`
-- Create: `src/components/integrations/stripe-connect-form.tsx`
+- Create: `src/components/integrations/stripe-byok-form.tsx`
 - Modify: `src/app/(dashboard)/layout.tsx` (add nav item)
 
 ---

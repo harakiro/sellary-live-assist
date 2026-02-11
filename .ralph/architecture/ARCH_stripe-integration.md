@@ -128,14 +128,11 @@ invoices
 
 ### 3. Stripe Integration Specifics
 
-#### Connection Methods
+#### Connection Method: BYOK (Bring Your Own Keys)
 
-Two ways to connect Stripe (operator's choice):
+Operator pastes their own Stripe Secret Key + Publishable Key from their Stripe Dashboard. Credentials are stored encrypted using the existing AES-256-GCM system.
 
-1. **Stripe Connect (OAuth)** — Operator clicks "Connect with Stripe", goes through Stripe OAuth. We get a `stripe_user_id` and refresh token. Best for multi-tenant SaaS.
-2. **API Keys (BYOK)** — Operator pastes their own Stripe Secret Key + Publishable Key. Simpler for single-operator setups.
-
-Both methods store credentials encrypted using the existing AES-256-GCM system.
+**Future enhancement:** Stripe Connect OAuth would allow a slicker connection UX and enable platform fees, but requires registering a Stripe platform application and going through Stripe's approval process. Deferred to a future iteration when user volume justifies the setup.
 
 #### Invoice Creation Flow
 
@@ -178,8 +175,7 @@ Listen for Stripe webhook events to update invoice status:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/integrations` | List all available integrations + connection status |
-| POST | `/api/integrations/stripe/connect` | Connect Stripe (BYOK or start OAuth) |
-| GET | `/api/integrations/stripe/oauth/callback` | Stripe OAuth callback |
+| POST | `/api/integrations/stripe/connect` | Connect Stripe via BYOK keys |
 | DELETE | `/api/integrations/stripe` | Disconnect Stripe |
 | GET | `/api/integrations/stripe/test` | Test Stripe connection health |
 | POST | `/api/shows/:id/invoices/generate` | Generate invoices for a show's buyers |
@@ -211,8 +207,8 @@ Listen for Stripe webhook events to update invoice status:
 
 #### Stripe Connection Page (`/integrations/stripe`)
 
-- Connection method selector (OAuth vs BYOK)
-- API key input fields (for BYOK)
+- API key input fields (Secret Key + Publishable Key)
+- Key validation on submit with clear success/error feedback
 - Connection status indicator
 - Test connection button
 - Default invoice settings (currency, memo template)
@@ -301,6 +297,7 @@ Operator                 App Server              Stripe API           Facebook A
 | Credential storage | Reuse existing AES-256-GCM encryption | Consistency, already proven |
 | Invoice model | Our own `invoices` table + Stripe as source of truth | Allows offline access, status tracking, supports future non-Stripe providers |
 | DM delivery | Facebook Pages Messaging API | Direct path to buyer. Falls back to operator-visible URL if messaging permissions unavailable |
+| Connection method | BYOK only (no Stripe Connect OAuth) | No Stripe app registration needed. OAuth deferred to future when user volume justifies |
 | Item pricing | Optional per-item price on `show_items` | Allows invoice line items to have amounts. Default to $0 (operator fills in on Stripe) if no price set |
 | Webhook verification | Stripe signature verification (`stripe.webhooks.constructEvent`) | Security best practice |
 | Tier gating | `workspace.settings.plan` field + middleware check | Simple MVP approach, upgrade to proper billing later |
@@ -318,9 +315,8 @@ Operator                 App Server              Stripe API           Facebook A
 ## Environment Variables (New)
 
 ```
-# Stripe (for OAuth flow — only needed if using Stripe Connect)
-STRIPE_CLIENT_ID=<from-stripe-dashboard>
-STRIPE_WEBHOOK_SECRET=<from-stripe-dashboard>
+# Stripe webhook signature verification
+STRIPE_WEBHOOK_SECRET=<from-stripe-dashboard-webhook-settings>
 
-# Note: Individual workspace Stripe keys are stored encrypted in the integrations table
+# Note: Individual workspace Stripe API keys are stored encrypted in the integrations table (BYOK)
 ```
