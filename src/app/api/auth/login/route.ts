@@ -5,8 +5,14 @@ import { verifyPassword } from '@/lib/auth/password';
 import { signAccessToken, signRefreshToken } from '@/lib/auth/jwt';
 import { loginSchema } from '@/lib/validations/auth';
 import { eq } from 'drizzle-orm';
+import { rateLimit } from '@/lib/rate-limit';
+
+const LOGIN_LIMIT = { windowMs: 15 * 60 * 1000, maxRequests: 10 };
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, 'auth:login', LOGIN_LIMIT);
+  if (limited) return limited;
+
   try {
     const body = await req.json();
     const parsed = loginSchema.safeParse(body);

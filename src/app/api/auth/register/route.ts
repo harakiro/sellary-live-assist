@@ -5,8 +5,14 @@ import { hashPassword } from '@/lib/auth/password';
 import { signAccessToken, signRefreshToken } from '@/lib/auth/jwt';
 import { registerSchema } from '@/lib/validations/auth';
 import { eq } from 'drizzle-orm';
+import { rateLimit } from '@/lib/rate-limit';
+
+const REGISTER_LIMIT = { windowMs: 60 * 60 * 1000, maxRequests: 5 };
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, 'auth:register', REGISTER_LIMIT);
+  if (limited) return limited;
+
   try {
     const body = await req.json();
     const parsed = registerSchema.safeParse(body);
