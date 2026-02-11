@@ -4,35 +4,39 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { getAccessToken } from '@/lib/api-client';
 import type { RealtimeEvent } from '@/lib/realtime/events';
 
-type UseWebSocketOptions = {
+type UseRealtimeOptions = {
   showId: string;
   onEvent?: (event: RealtimeEvent) => void;
   enabled?: boolean;
 };
 
-export function useWebSocket({ showId, onEvent, enabled = true }: UseWebSocketOptions) {
-  const wsRef = useRef<WebSocket | null>(null);
+/**
+ * SSE-based real-time event hook. Connects to the same-origin streaming
+ * endpoint — no separate port, no WebSocket, works everywhere.
+ */
+export function useRealtime({ showId, onEvent, enabled = true }: UseRealtimeOptions) {
   const [connected, setConnected] = useState(false);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
-  const reconnectAttemptRef = useRef(0);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
+  const sourceRef = useRef<EventSource | null>(null);
 
   const connect = useCallback(() => {
     if (!enabled || !showId) return;
 
     const token = getAccessToken();
-    if (!token) return;
+    if (!token) {
+      console.warn('[Realtime] No access token, skipping SSE connection');
+      return;
+    }
 
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3000';
-    const ws = new WebSocket(`${wsUrl}/api/realtime?show_id=${showId}&token=${token}`);
+    const url = `/api/shows/${showId}/stream?token=${encodeURIComponent(token)}`;
+    const source = new EventSource(url);
 
-    ws.onopen = () => {
+    source.onopen = () => {
       setConnected(true);
-      reconnectAttemptRef.current = 0;
     };
 
-    ws.onmessage = (e) => {
+    source.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data) as RealtimeEvent;
         onEventRef.current?.(event);
@@ -41,35 +45,23 @@ export function useWebSocket({ showId, onEvent, enabled = true }: UseWebSocketOp
       }
     };
 
-    ws.onclose = () => {
+    source.onerror = () => {
       setConnected(false);
-      wsRef.current = null;
-
-      if (enabled) {
-        // Exponential backoff reconnect
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttemptRef.current), 30000);
-        reconnectAttemptRef.current++;
-        reconnectTimeoutRef.current = setTimeout(connect, delay);
-      }
+      // EventSource auto-reconnects with built-in backoff
+      console.warn('[Realtime] SSE connection error, auto-reconnecting...');
     };
 
-    ws.onerror = () => {
-      ws.close();
-    };
-
-    wsRef.current = ws;
+    sourceRef.current = source;
   }, [enabled, showId]);
 
   useEffect(() => {
     connect();
 
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
+      if (sourceRef.current) {
+        sourceRef.current.close();
+        sourceRef.current = null;
+        setConnected(false);
       }
     };
   }, [connect]);

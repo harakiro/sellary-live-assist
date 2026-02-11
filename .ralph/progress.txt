@@ -1,22 +1,24 @@
 # Ralph Progress Tracker
 
 Feature: websocket-realtime
-Task: FIX-001
-Status: BUILDING
+Task: (all complete)
+Status: DONE
 Review Cycle: 1
 
 ## Task Queue
-- [ ] FIX-001: Replace standalone WS server with SSE event bus and streaming endpoint
-- [ ] FIX-002: Rewrite client hook to use SSE with proper error handling and update console
-- [ ] FIX-003: Remove WebSocket dependencies and clean up artifacts
+- [x] FIX-001: Replace standalone WS server with SSE event bus and streaming endpoint
+- [x] FIX-002: Rewrite client hook to use SSE with proper error handling and update console
+- [x] FIX-003: Remove WebSocket dependencies and clean up artifacts
 
 ## Completed Tasks
-(none yet)
+- FIX-001: server.ts rewritten (237 → 47 lines), SSE endpoint created
+- FIX-002: use-websocket.ts rewritten to SSE EventSource, console page updated
+- FIX-003: ws/types-ws removed from package.json, env vars cleaned
 
 ## Feature Queue
 1. [COMPLETE] wire-up-dashboard-ui — Wire Up Dashboard UI Pages
 2. [PAUSED] stripe-integration — Stripe Integration & Integrations Framework
-3. [IN PROGRESS] websocket-realtime — Fix Real-Time Event Delivery (CRITICAL)
+3. [COMPLETE] websocket-realtime — Fix Real-Time Event Delivery
 4. [ ] live-discovery — Live Discovery Endpoint
 5. [ ] show-activation-polish — Show Detail & Activation Polish
 6. [ ] audit-logging — Audit Logging
@@ -29,3 +31,4 @@ Review Cycle: 1
 
 ## Completed Features
 1. wire-up-dashboard-ui — Wire Up Dashboard UI Pages
+2. websocket-realtime — Fix Real-Time Event Delivery
