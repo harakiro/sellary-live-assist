@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { broadcastToShow } from '@/lib/realtime/server';
 import { startPolling } from '@/lib/platforms/facebook/polling';
+import { logAuditEvent } from '@/lib/audit';
 
 async function handler(
   req: AuthenticatedRequest,
@@ -67,6 +68,16 @@ async function handler(
     type: 'session.status',
     data: { showId, status: 'active', timestamp: new Date().toISOString() },
   });
+
+  logAuditEvent(db, {
+    workspaceId,
+    showId,
+    actorUserId: req.auth.userId,
+    action: 'show.activated',
+    entityType: 'show',
+    entityId: showId,
+    details: { previousStatus: show.status },
+  }).catch(() => {});
 
   return NextResponse.json({ data: updated });
 }

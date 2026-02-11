@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { shows, showItems, claims } from '@/lib/db/schema';
+import { shows, showItems, claims, socialConnections } from '@/lib/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { updateShowSchema } from '@/lib/validations/shows';
+import { startPolling } from '@/lib/platforms/facebook/polling';
+import { logAuditEvent } from '@/lib/audit';
 
 async function handleGet(
   req: AuthenticatedRequest,
@@ -105,6 +107,25 @@ async function handlePatch(
     .where(eq(shows.id, showId))
     .returning();
 
+  // Start polling if an active show just got a Facebook connection + liveId
+  if (
+    existing.status === 'active' &&
+    parsed.data.platform === 'facebook' &&
+    parsed.data.connectionId &&
+    parsed.data.liveId
+  ) {
+    const [connection] = await db
+      .select()
+      .from(socialConnections)
+      .where(eq(socialConnections.id, parsed.data.connectionId))
+      .limit(1);
+
+    if (connection) {
+      startPolling(showId, parsed.data.liveId, connection.encryptedAccessToken);
+      console.log(`[Shows PATCH] Started polling for active show ${showId}`);
+    }
+  }
+
   return NextResponse.json({ data: updated });
 }
 
@@ -145,6 +166,16 @@ async function handleDelete(
   // Delete items first (foreign key constraint), then the show
   await db.delete(showItems).where(eq(showItems.showId, showId));
   await db.delete(shows).where(eq(shows.id, showId));
+
+  logAuditEvent(db, {
+    workspaceId,
+    showId,
+    actorUserId: req.auth.userId,
+    action: 'show.deleted',
+    entityType: 'show',
+    entityId: showId,
+    details: { showName: existing.name },
+  }).catch(() => {});
 
   return NextResponse.json({ data: { success: true } });
 }

@@ -4,6 +4,7 @@ import { showItems } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { updateItemSchema } from '@/lib/validations/shows';
+import { logAuditEvent } from '@/lib/audit';
 
 async function handlePatch(
   req: AuthenticatedRequest,
@@ -82,6 +83,16 @@ async function handleDelete(
   await db
     .delete(showItems)
     .where(and(eq(showItems.id, itemId), eq(showItems.showId, showId)));
+
+  logAuditEvent(db, {
+    workspaceId: req.auth.workspaceId,
+    showId,
+    actorUserId: req.auth.userId,
+    action: 'item.deleted',
+    entityType: 'show_item',
+    entityId: itemId,
+    details: { itemNumber: item.itemNumber, title: item.title },
+  }).catch(() => {});
 
   return NextResponse.json({ data: { deleted: true } });
 }

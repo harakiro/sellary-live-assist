@@ -4,6 +4,7 @@ import { shows } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { broadcastToShow } from '@/lib/realtime/server';
+import { logAuditEvent } from '@/lib/audit';
 
 async function handler(
   req: AuthenticatedRequest,
@@ -42,6 +43,16 @@ async function handler(
     type: 'session.status',
     data: { showId, status: 'active', timestamp: new Date().toISOString() },
   });
+
+  logAuditEvent(db, {
+    workspaceId,
+    showId,
+    actorUserId: req.auth.userId,
+    action: 'show.resumed',
+    entityType: 'show',
+    entityId: showId,
+    details: { previousStatus: 'paused' },
+  }).catch(() => {});
 
   return NextResponse.json({ data: updated });
 }

@@ -5,6 +5,7 @@ import { releaseClaim } from '@/lib/claim-engine/allocator';
 import { broadcastToShow } from '@/lib/realtime/server';
 import { claims } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+import { logAuditEvent } from '@/lib/audit';
 
 async function handler(
   req: AuthenticatedRequest,
@@ -48,6 +49,16 @@ async function handler(
         timestamp: new Date().toISOString(),
       },
     });
+
+    logAuditEvent(db, {
+      workspaceId: req.auth.workspaceId,
+      showId: claim.showId,
+      actorUserId: req.auth.userId,
+      action: 'claim.released',
+      entityType: 'claim',
+      entityId: claimId,
+      details: { itemNumber: claim.itemNumber, userHandle: claim.userHandle },
+    }).catch(() => {});
   }
 
   return NextResponse.json({ data: result });

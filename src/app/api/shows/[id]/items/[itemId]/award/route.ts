@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { manualAward } from '@/lib/claim-engine/allocator';
 import { broadcastToShow } from '@/lib/realtime/server';
+import { logAuditEvent } from '@/lib/audit';
 
 const awardSchema = z.object({
   userHandle: z.string().min(1, 'User handle required'),
@@ -60,6 +61,16 @@ async function handler(
       timestamp: new Date().toISOString(),
     },
   });
+
+  logAuditEvent(db, {
+    workspaceId: req.auth.workspaceId,
+    showId,
+    actorUserId: req.auth.userId,
+    action: 'item.awarded',
+    entityType: 'show_item',
+    entityId: itemId,
+    details: { userHandle: parsed.data.userHandle, claimId: result.claimId },
+  }).catch(() => {});
 
   return NextResponse.json({ data: result }, { status: 201 });
 }
