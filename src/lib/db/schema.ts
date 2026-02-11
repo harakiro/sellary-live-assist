@@ -34,7 +34,14 @@ export const claimStatusEnum = pgEnum('claim_status', [
   'waitlist',
   'released',
   'passed',
+  'unmatched',
 ]);
+
+export const integrationProviderEnum = pgEnum('integration_provider', ['stripe', 'shopify', 'square', 'medusajs']);
+
+export const integrationStatusEnum = pgEnum('integration_status', ['active', 'inactive', 'error']);
+
+export const invoiceStatusEnum = pgEnum('invoice_status', ['draft', 'sent', 'paid', 'void', 'error']);
 
 // --- Tables ---
 
@@ -56,22 +63,32 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-export const socialConnections = pgTable('social_connections', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  workspaceId: uuid('workspace_id')
-    .notNull()
-    .references(() => workspaces.id),
-  platform: platformEnum('platform').notNull(),
-  externalAccountId: varchar('external_account_id', { length: 255 }).notNull(),
-  displayName: varchar('display_name', { length: 255 }),
-  encryptedAccessToken: text('encrypted_access_token').notNull(),
-  tokenExpiresAt: timestamp('token_expires_at'),
-  refreshTokenEncrypted: text('refresh_token_encrypted'),
-  scopes: text('scopes').array(),
-  status: connectionStatusEnum('status').default('active').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+export const socialConnections = pgTable(
+  'social_connections',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    platform: platformEnum('platform').notNull(),
+    externalAccountId: varchar('external_account_id', { length: 255 }).notNull(),
+    displayName: varchar('display_name', { length: 255 }),
+    encryptedAccessToken: text('encrypted_access_token').notNull(),
+    tokenExpiresAt: timestamp('token_expires_at'),
+    refreshTokenEncrypted: text('refresh_token_encrypted'),
+    scopes: text('scopes').array(),
+    status: connectionStatusEnum('status').default('active').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspacePlatformAccountIdx: uniqueIndex('social_connections_workspace_platform_account_idx').on(
+      table.workspaceId,
+      table.platform,
+      table.externalAccountId,
+    ),
+  }),
+);
 
 export const shows = pgTable(
   'shows',
@@ -109,6 +126,7 @@ export const showItems = pgTable(
     title: varchar('title', { length: 255 }).notNull(),
     description: text('description'),
     totalQuantity: integer('total_quantity').default(1).notNull(),
+    price: integer('price'),  // Price in cents, nullable
     claimedCount: integer('claimed_count').default(0).notNull(),
     status: itemStatusEnum('status').default('unclaimed').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -130,7 +148,6 @@ export const claims = pgTable(
       .notNull()
       .references(() => shows.id),
     showItemId: uuid('show_item_id')
-      .notNull()
       .references(() => showItems.id),
     itemNumber: varchar('item_number', { length: 50 }).notNull(),
     platform: platformEnum('platform').notNull(),
@@ -176,6 +193,7 @@ export const comments = pgTable(
     platformUserId: varchar('platform_user_id', { length: 255 }).notNull(),
     userHandle: varchar('user_handle', { length: 255 }),
     commentId: varchar('comment_id', { length: 255 }),
+    parentCommentId: varchar('parent_comment_id', { length: 255 }),
     rawText: text('raw_text').notNull(),
     normalizedText: text('normalized_text'),
     parsed: boolean('parsed').default(false).notNull(),
@@ -185,6 +203,7 @@ export const comments = pgTable(
   },
   (table) => ({
     showReceivedAtIdx: index('comments_show_received_at_idx').on(table.showId, table.receivedAt),
+    showCommentIdIdx: uniqueIndex('comments_show_comment_id_idx').on(table.showId, table.commentId),
   }),
 );
 
@@ -199,6 +218,58 @@ export const auditLog = pgTable('audit_log', {
   details: jsonb('details'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+
+export const integrations = pgTable(
+  'integrations',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+    provider: integrationProviderEnum('provider').notNull(),
+    status: integrationStatusEnum('status').default('inactive').notNull(),
+    displayName: varchar('display_name', { length: 255 }),
+    credentialsEnc: text('credentials_enc'),  // AES-256-GCM encrypted JSON
+    settings: jsonb('settings').default({}),
+    connectedAt: timestamp('connected_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceProviderIdx: uniqueIndex('integrations_workspace_provider_idx').on(
+      table.workspaceId,
+      table.provider,
+    ),
+  }),
+);
+
+export const invoices = pgTable(
+  'invoices',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
+    showId: uuid('show_id').notNull().references(() => shows.id),
+    integrationId: uuid('integration_id').notNull().references(() => integrations.id),
+    provider: integrationProviderEnum('provider').notNull(),
+    externalId: varchar('external_id', { length: 255 }),
+    externalUrl: text('external_url'),
+    buyerHandle: varchar('buyer_handle', { length: 255 }),
+    buyerPlatformId: varchar('buyer_platform_id', { length: 255 }),
+    status: invoiceStatusEnum('status').default('draft').notNull(),
+    amountCents: integer('amount_cents'),
+    currency: varchar('currency', { length: 3 }).default('usd'),
+    lineItems: jsonb('line_items'),
+    errorMessage: text('error_message'),
+    sentAt: timestamp('sent_at'),
+    paidAt: timestamp('paid_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    showStatusIdx: index('invoices_show_status_idx').on(table.showId, table.status),
+    workspaceCreatedIdx: index('invoices_workspace_created_idx').on(table.workspaceId, table.createdAt),
+    externalIdIdx: index('invoices_external_id_idx').on(table.externalId),
+  }),
+);
 
 // --- Type exports ---
 
@@ -218,3 +289,7 @@ export type Comment = typeof comments.$inferSelect;
 export type NewComment = typeof comments.$inferInsert;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type NewAuditLogEntry = typeof auditLog.$inferInsert;
+export type Integration = typeof integrations.$inferSelect;
+export type NewIntegration = typeof integrations.$inferInsert;
+export type Invoice = typeof invoices.$inferSelect;
+export type NewInvoice = typeof invoices.$inferInsert;
