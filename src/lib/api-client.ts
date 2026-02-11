@@ -35,7 +35,7 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
-async function tryRefresh(): Promise<boolean> {
+export async function tryRefresh(): Promise<boolean> {
   if (!refreshToken && typeof window !== 'undefined') {
     refreshToken = localStorage.getItem('refreshToken');
   }
