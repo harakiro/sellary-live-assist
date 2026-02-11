@@ -1,29 +1,27 @@
 # Ralph Progress Tracker
 
-Feature: websocket-realtime
+Feature: auth-rate-limiting
 Task: (all complete)
 Status: DONE
-Review Cycle: 1
 
 ## Task Queue
-- [x] FIX-001: Replace standalone WS server with SSE event bus and streaming endpoint
-- [x] FIX-002: Rewrite client hook to use SSE with proper error handling and update console
-- [x] FIX-003: Remove WebSocket dependencies and clean up artifacts
+(empty)
 
 ## Completed Tasks
-- FIX-001: server.ts rewritten (237 → 47 lines), SSE endpoint created
-- FIX-002: use-websocket.ts rewritten to SSE EventSource, console page updated
-- FIX-003: ws/types-ws removed from package.json, env vars cleaned
+- audit-logging TASK-001: Audit logging in show lifecycle routes
+- audit-logging TASK-002: Audit logging in claim/item actions
+- auth-rate-limiting TASK-001: Rate limiter utility + tests
+- auth-rate-limiting TASK-002: Rate limiting on login, register, refresh
 
 ## Feature Queue
 1. [COMPLETE] wire-up-dashboard-ui — Wire Up Dashboard UI Pages
 2. [PAUSED] stripe-integration — Stripe Integration & Integrations Framework
 3. [COMPLETE] websocket-realtime — Fix Real-Time Event Delivery
-4. [ ] live-discovery — Live Discovery Endpoint
-5. [ ] show-activation-polish — Show Detail & Activation Polish
-6. [ ] audit-logging — Audit Logging
-7. [ ] auth-rate-limiting — Auth Rate Limiting
-8. [ ] settings-persistence — Settings Persistence
+4. [COMPLETE] live-discovery — Live Discovery Endpoint
+5. [COMPLETE] show-activation-polish — Show Detail & Activation Polish
+6. [COMPLETE] audit-logging — Audit Logging
+7. [COMPLETE] auth-rate-limiting — Auth Rate Limiting
+8. [COMPLETE] settings-persistence — Settings Persistence
 9. [ ] error-handling — Error Handling & Edge Cases
 10. [ ] integration-tests — Integration Test Suite
 11. [ ] e2e-tests — E2E Test Suite
@@ -32,3 +30,8 @@ Review Cycle: 1
 ## Completed Features
 1. wire-up-dashboard-ui — Wire Up Dashboard UI Pages
 2. websocket-realtime — Fix Real-Time Event Delivery
+3. live-discovery — Live Discovery Endpoint
+4. show-activation-polish — Show Detail & Activation Polish
+5. settings-persistence — Settings Persistence
+6. audit-logging — Audit Logging
+7. auth-rate-limiting — Auth Rate Limiting
