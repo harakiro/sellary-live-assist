@@ -1,15 +1,20 @@
 # Ralph Progress Tracker
 
-Feature: (all Phase 1-3 features complete)
+Feature: stripe-integration
 Task: (none)
-Status: PHASE COMPLETE
+Status: COMPLETE
 
 ## Task Queue
-(empty — all non-test features complete)
+1. [COMPLETE] FEAT-001: Integrations data model and framework scaffold
+2. [COMPLETE] FEAT-002: Stripe adapter — BYOK connection, credential management, API routes
+3. [COMPLETE] FEAT-003: Invoice generation engine
+4. [COMPLETE] FEAT-004: Integrations Hub UI and Stripe connection page
+5. [COMPLETE] FEAT-005: Invoice management UI
+6. [COMPLETE] FEAT-006: Tests for integrations framework and Stripe adapter
 
 ## Feature Queue
 1. [COMPLETE] wire-up-dashboard-ui — Wire Up Dashboard UI Pages
-2. [PAUSED] stripe-integration — Stripe Integration & Integrations Framework
+2. [COMPLETE] stripe-integration — Stripe Integration & Integrations Framework
 3. [COMPLETE] websocket-realtime — Fix Real-Time Event Delivery
 4. [COMPLETE] live-discovery — Live Discovery Endpoint
 5. [COMPLETE] show-activation-polish — Show Detail & Activation Polish
@@ -23,11 +28,12 @@ Status: PHASE COMPLETE
 
 ## Completed Features
 1. wire-up-dashboard-ui — Wire Up Dashboard UI Pages
-2. websocket-realtime — Fix Real-Time Event Delivery
-3. live-discovery — Live Discovery Endpoint
-4. show-activation-polish — Show Detail & Activation Polish
-5. settings-persistence — Settings Persistence
-6. audit-logging — Audit Logging
-7. auth-rate-limiting — Auth Rate Limiting
-8. error-handling — Error Handling & Edge Cases
-9. debug-endpoints — Debug Endpoint Completion
+2. stripe-integration — Stripe Integration & Integrations Framework
+3. websocket-realtime — Fix Real-Time Event Delivery
+4. live-discovery — Live Discovery Endpoint
+5. show-activation-polish — Show Detail & Activation Polish
+6. settings-persistence — Settings Persistence
+7. audit-logging — Audit Logging
+8. auth-rate-limiting — Auth Rate Limiting
+9. error-handling — Error Handling & Edge Cases
+10. debug-endpoints — Debug Endpoint Completion

@@ -195,7 +195,11 @@ export default function ConsolePage() {
         fetchShow();
         break;
       case 'session.status':
-        setShow((prev) => (prev ? { ...prev, status: event.data.status } : prev));
+        // Only update show status for actual lifecycle changes (active/paused/ended),
+        // not for SSE connection status events like 'connected'
+        if (['active', 'paused', 'ended'].includes(event.data.status)) {
+          setShow((prev) => (prev ? { ...prev, status: event.data.status } : prev));
+        }
         break;
     }
   }, [fetchShow]);

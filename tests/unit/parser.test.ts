@@ -104,6 +104,16 @@ describe('parseComment', () => {
     const result = parseComment('sold 1');
     expect(result).toEqual({ type: 'claim', itemNumber: '1', rawText: 'sold 1' });
   });
+
+  it('should match "pass on 50"', () => {
+    const result = parseComment('pass on 50');
+    expect(result).toEqual({ type: 'pass', itemNumber: '50', rawText: 'pass on 50' });
+  });
+
+  it('should match "sold on 123"', () => {
+    const result = parseComment('sold on 123');
+    expect(result).toEqual({ type: 'claim', itemNumber: '123', rawText: 'sold on 123' });
+  });
 });
 
 describe('normalizeComment + parseComment integration', () => {

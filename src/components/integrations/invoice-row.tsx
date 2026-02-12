@@ -2,7 +2,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Send, Copy, CheckCircle, MessageCircle } from 'lucide-react';
+import { ExternalLink, Send, Copy, CheckCircle, MessageCircle, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 
@@ -22,12 +22,14 @@ type InvoiceRowProps = {
     createdAt: string;
   };
   showId: string;
+  onDelete?: (invoiceId: string) => void;
 };
 
 const statusBadge = (status: string) => {
   switch (status) {
     case 'paid': return 'success' as const;
     case 'sent': return 'default' as const;
+    case 'prompted': return 'warning' as const;
     case 'draft': return 'secondary' as const;
     case 'error': return 'destructive' as const;
     case 'void': return 'outline' as const;
@@ -44,11 +46,13 @@ function formatCents(cents: number | null, currency: string | null): string {
   }).format(amount);
 }
 
-export function InvoiceRow({ invoice, showId }: InvoiceRowProps) {
+export function InvoiceRow({ invoice, showId, onDelete }: InvoiceRowProps) {
   const [sending, setSending] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sendStatus, setSendStatus] = useState<'idle' | 'sent' | 'failed' | 'prompted'>('idle');
   const [sendError, setSendError] = useState<string | null>(null);
+  const [displayStatus, setDisplayStatus] = useState(invoice.status);
 
   async function sendLink() {
     setSending(true);
@@ -63,9 +67,11 @@ export function InvoiceRow({ invoice, showId }: InvoiceRowProps) {
 
     if ('data' in res && res.data.sent) {
       setSendStatus('sent');
+      setDisplayStatus('sent');
       setTimeout(() => setSendStatus('idle'), 2000);
     } else if ('data' in res && res.data.prompted) {
       setSendStatus('prompted');
+      setDisplayStatus('prompted');
     } else {
       setSendStatus('failed');
       const errMsg = 'data' in res ? res.data.error : 'error' in res ? res.error.message : 'Send failed';
@@ -77,6 +83,18 @@ export function InvoiceRow({ invoice, showId }: InvoiceRowProps) {
     }
 
     setSending(false);
+  }
+
+  async function deleteInvoice() {
+    setDeleting(true);
+    const res = await apiFetch<{ deleted: boolean }>(
+      `/api/shows/${showId}/invoices/${invoice.id}`,
+      { method: 'DELETE' },
+    );
+    if ('data' in res && res.data.deleted) {
+      onDelete?.(invoice.id);
+    }
+    setDeleting(false);
   }
 
   async function copyLink() {
@@ -98,7 +116,7 @@ export function InvoiceRow({ invoice, showId }: InvoiceRowProps) {
         <div className="text-xs text-gray-500">
           {items.length} item{items.length !== 1 ? 's' : ''} &middot; {formatCents(invoice.amountCents, invoice.currency)}
         </div>
-        {invoice.status === 'error' && invoice.errorMessage && (
+        {displayStatus === 'error' && invoice.errorMessage && (
           <div className="text-xs text-red-600 mt-0.5 truncate" title={invoice.errorMessage}>
             {invoice.errorMessage}
           </div>
@@ -106,7 +124,7 @@ export function InvoiceRow({ invoice, showId }: InvoiceRowProps) {
       </div>
 
       <div className="flex items-center gap-2 ml-4">
-        <Badge variant={statusBadge(invoice.status)}>{invoice.status}</Badge>
+        <Badge variant={statusBadge(displayStatus)}>{displayStatus}</Badge>
 
         {invoice.externalUrl && (
           <>
@@ -132,7 +150,7 @@ export function InvoiceRow({ invoice, showId }: InvoiceRowProps) {
           </>
         )}
 
-        {invoice.status !== 'paid' && invoice.status !== 'void' && invoice.externalUrl && (
+        {displayStatus !== 'paid' && displayStatus !== 'void' && invoice.externalUrl && (
           <div className="relative">
             <Button
               size="sm"
@@ -167,6 +185,19 @@ export function InvoiceRow({ invoice, showId }: InvoiceRowProps) {
               </div>
             )}
           </div>
+        )}
+
+        {displayStatus !== 'paid' && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-gray-400 hover:text-red-600"
+            onClick={deleteInvoice}
+            disabled={deleting}
+            title="Delete checkout link"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         )}
       </div>
     </div>

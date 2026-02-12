@@ -41,7 +41,7 @@ export const integrationProviderEnum = pgEnum('integration_provider', ['stripe',
 
 export const integrationStatusEnum = pgEnum('integration_status', ['active', 'inactive', 'error']);
 
-export const invoiceStatusEnum = pgEnum('invoice_status', ['draft', 'sent', 'paid', 'void', 'error']);
+export const invoiceStatusEnum = pgEnum('invoice_status', ['draft', 'sent', 'prompted', 'paid', 'void', 'error']);
 
 // --- Tables ---
 

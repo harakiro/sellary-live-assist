@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { db } from '@/lib/db';
 import { invoices } from '@/lib/db/schema';
-import { eq, and, isNotNull } from 'drizzle-orm';
-import { sendCheckoutDM } from '@/lib/platforms/messaging';
+import { eq, and, isNotNull, inArray } from 'drizzle-orm';
+import { sendCheckoutDM, getShortCheckoutUrl } from '@/lib/platforms/messaging';
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const { workspaceId } = req.auth;
@@ -14,7 +14,7 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     .where(
       and(
         eq(invoices.workspaceId, workspaceId),
-        eq(invoices.status, 'sent'),
+        inArray(invoices.status, ['draft', 'prompted']),
         isNotNull(invoices.externalUrl),
       ),
     );
@@ -36,13 +36,18 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
           showId: inv.showId,
           buyerPlatformId: inv.buyerPlatformId || '',
           buyerHandle: inv.buyerHandle,
-          checkoutUrl: inv.externalUrl!,
+          checkoutUrl: getShortCheckoutUrl(inv.id),
         });
 
         if (dmResult.sent) {
           await db
             .update(invoices)
-            .set({ sentAt: new Date(), updatedAt: new Date() })
+            .set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
+            .where(eq(invoices.id, inv.id));
+        } else if (dmResult.prompted) {
+          await db
+            .update(invoices)
+            .set({ status: 'prompted', updatedAt: new Date() })
             .where(eq(invoices.id, inv.id));
         }
 

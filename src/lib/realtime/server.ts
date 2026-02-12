@@ -6,18 +6,20 @@ const g = globalThis as unknown as {
   __realtimeEmitter?: EventEmitter;
 };
 
-if (!g.__realtimeEmitter) {
-  g.__realtimeEmitter = new EventEmitter();
-  g.__realtimeEmitter.setMaxListeners(100);
+function getEmitter(): EventEmitter {
+  if (!g.__realtimeEmitter) {
+    g.__realtimeEmitter = new EventEmitter();
+    g.__realtimeEmitter.setMaxListeners(100);
+  }
+  return g.__realtimeEmitter;
 }
-
-const emitter = g.__realtimeEmitter;
 
 /**
  * Broadcast an event to all SSE clients subscribed to a show.
  * This is the only function callers need — same API as before.
  */
 export function broadcastToShow(showId: string, event: RealtimeEvent) {
+  const emitter = getEmitter();
   const channel = `show:${showId}`;
   const count = emitter.listenerCount(channel);
   emitter.emit(channel, event);
@@ -32,10 +34,13 @@ export function subscribeToShow(
   showId: string,
   listener: (event: RealtimeEvent) => void,
 ): () => void {
+  const emitter = getEmitter();
   const channel = `show:${showId}`;
   emitter.on(channel, listener);
+  console.log(`[SSE] Client subscribed to show ${showId.slice(0, 8)}... (${emitter.listenerCount(channel)} total)`);
   return () => {
     emitter.off(channel, listener);
+    console.log(`[SSE] Client unsubscribed from show ${showId.slice(0, 8)}... (${emitter.listenerCount(channel)} remaining)`);
   };
 }
 
@@ -43,5 +48,5 @@ export function subscribeToShow(
  * Get count of connected SSE clients for a show.
  */
 export function getShowConnectionCount(showId: string): number {
-  return emitter.listenerCount(`show:${showId}`);
+  return getEmitter().listenerCount(`show:${showId}`);
 }

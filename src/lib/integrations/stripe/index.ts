@@ -84,8 +84,19 @@ export const stripeAdapter: IntegrationAdapter = {
       externalUrl: session.url || '',
       amountCents,
       currency,
-      status: 'sent',
+      status: 'draft',
     };
+  },
+
+  async expireInvoice(externalId: string, credentialsEnc: string) {
+    try {
+      const stripe = getClient(credentialsEnc);
+      await stripe.checkout.sessions.expire(externalId);
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to expire checkout session';
+      return { ok: false, error: message };
+    }
   },
 
   async getInvoiceStatus(externalId: string, credentialsEnc: string): Promise<InvoiceStatusResult> {

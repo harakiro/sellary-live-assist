@@ -3,7 +3,7 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { db } from '@/lib/db';
 import { invoices } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { sendCheckoutDM } from '@/lib/platforms/messaging';
+import { sendCheckoutDM, getShortCheckoutUrl } from '@/lib/platforms/messaging';
 
 export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
   const showId = context?.params?.id;
@@ -40,13 +40,18 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
     showId,
     buyerPlatformId: invoice.buyerPlatformId || '',
     buyerHandle: invoice.buyerHandle,
-    checkoutUrl: invoice.externalUrl,
+    checkoutUrl: getShortCheckoutUrl(invoiceId),
   });
 
   if (dmResult.sent) {
     await db
       .update(invoices)
-      .set({ sentAt: new Date(), updatedAt: new Date() })
+      .set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
+      .where(eq(invoices.id, invoiceId));
+  } else if (dmResult.prompted) {
+    await db
+      .update(invoices)
+      .set({ status: 'prompted', updatedAt: new Date() })
       .where(eq(invoices.id, invoiceId));
   }
 

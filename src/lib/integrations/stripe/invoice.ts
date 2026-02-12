@@ -3,6 +3,7 @@ import { claims, showItems, invoices, integrations, shows } from '@/lib/db/schem
 import { eq, and, inArray } from 'drizzle-orm';
 import { getAdapter } from '../registry';
 import type { InvoiceLineItem } from '../types';
+import { sendCheckoutDM, getShortCheckoutUrl } from '@/lib/platforms/messaging';
 
 type BuyerRollup = {
   platformUserId: string;
@@ -156,10 +157,36 @@ export async function generateInvoicesForShow(
         amountCents: invoiceResult.amountCents,
         currency: invoiceResult.currency,
         lineItems: lineItems,
-        sentAt: new Date(),
       }).returning();
 
       result.generated++;
+
+      // Attempt to DM the checkout link immediately
+      if (invoiceResult.externalUrl) {
+        try {
+          const dmResult = await sendCheckoutDM({
+            showId,
+            buyerPlatformId: buyer.platformUserId,
+            buyerHandle: buyer.userHandle,
+            checkoutUrl: getShortCheckoutUrl(invoice.id),
+          });
+
+          if (dmResult.sent) {
+            await db
+              .update(invoices)
+              .set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
+              .where(eq(invoices.id, invoice.id));
+          } else if (dmResult.prompted) {
+            await db
+              .update(invoices)
+              .set({ status: 'prompted', updatedAt: new Date() })
+              .where(eq(invoices.id, invoice.id));
+          }
+        } catch (dmErr) {
+          console.error(`[invoice-gen] DM send failed for ${buyer.userHandle || buyer.platformUserId}:`, dmErr);
+        }
+      }
+
       result.results.push({
         buyerHandle: buyer.userHandle,
         buyerPlatformId: buyer.platformUserId,

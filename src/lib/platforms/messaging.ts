@@ -1,9 +1,14 @@
 import { db } from '@/lib/db';
-import { shows, socialConnections, claims } from '@/lib/db/schema';
+import { shows, socialConnections, claims, comments } from '@/lib/db/schema';
 import { eq, and, desc, isNotNull } from 'drizzle-orm';
 import { decrypt } from '@/lib/encryption';
 import { sendDirectMessage as sendFBDM, replyToComment } from '@/lib/platforms/facebook/api';
 import { sendDirectMessage as sendIGDM } from '@/lib/platforms/instagram/api';
+
+export function getShortCheckoutUrl(invoiceId: string): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  return `${appUrl}/pay/${invoiceId}`;
+}
 
 export async function sendCheckoutDM(params: {
   showId: string;
@@ -59,28 +64,36 @@ export async function sendCheckoutDM(params: {
     if (!result.ok) {
       // Comment-reply fallback when messaging window is closed
       if (result.code === 'OUTSIDE_WINDOW') {
-        const [claim] = await db
+        console.log(`[FB DM] Outside window for ${buyerPlatformId}, attempting comment-reply fallback`);
+
+        // Find the buyer's most recent comment on this show's live thread
+        const [latestComment] = await db
           .select()
-          .from(claims)
+          .from(comments)
           .where(
             and(
-              eq(claims.showId, showId),
-              eq(claims.platformUserId, buyerPlatformId),
-              eq(claims.claimStatus, 'winner'),
-              isNotNull(claims.commentId),
+              eq(comments.showId, showId),
+              eq(comments.platformUserId, buyerPlatformId),
+              isNotNull(comments.commentId),
             ),
           )
-          .orderBy(desc(claims.createdAt))
+          .orderBy(desc(comments.receivedAt))
           .limit(1);
 
-        if (claim?.commentId) {
-          const pageId = connection.externalAccountId;
+        const replyTarget = latestComment?.commentId;
+
+        if (replyTarget) {
           const handle = buyerHandle || 'there';
-          const promptMessage = `Congrats ${handle}! Send us a DM to get your checkout link: https://m.me/${pageId}`;
-          const reply = await replyToComment(accessToken, claim.commentId, promptMessage);
+          const promptMessage = `Hey ${handle}! Please send us a DM so we can get your checkout link to you!`;
+          console.log(`[FB DM] Replying to comment ${replyTarget} for ${buyerPlatformId}`);
+          const reply = await replyToComment(accessToken, replyTarget, promptMessage);
           if (reply) {
+            console.log(`[FB DM] Comment reply sent successfully: ${reply.id}`);
             return { sent: false, prompted: true };
           }
+          console.warn(`[FB DM] Comment reply failed for comment ${replyTarget}`);
+        } else {
+          console.warn(`[FB DM] No comments found for buyer ${buyerPlatformId} in show ${showId}`);
         }
       }
       return { sent: false, error: result.error };

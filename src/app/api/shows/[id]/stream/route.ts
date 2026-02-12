@@ -14,6 +14,8 @@ export async function GET(
   const showId = params.id;
   const token = req.nextUrl.searchParams.get('token');
 
+  console.log(`[SSE] Stream request received for show ${showId}, token present: ${!!token}`);
+
   if (!token) {
     return new Response(
       JSON.stringify({ error: { code: 'UNAUTHORIZED', message: 'Missing token' } }),
@@ -29,6 +31,8 @@ export async function GET(
       { status: 401, headers: { 'Content-Type': 'application/json' } },
     );
   }
+
+  console.log(`[SSE] Stream request for show ${showId} — opening connection`);
 
   const encoder = new TextEncoder();
 

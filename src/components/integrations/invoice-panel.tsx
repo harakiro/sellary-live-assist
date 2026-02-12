@@ -74,6 +74,10 @@ export function InvoicePanel({ showId, hasClaims }: InvoicePanelProps) {
     setGenerating(false);
   }
 
+  const handleDelete = useCallback((invoiceId: string) => {
+    setInvoices((prev) => prev.filter((inv) => inv.id !== invoiceId));
+  }, []);
+
   // Allow external updates (e.g., from realtime events)
   const handleInvoiceUpdate = useCallback(
     (invoiceId: string, newStatus: string) => {
@@ -155,7 +159,7 @@ export function InvoicePanel({ showId, hasClaims }: InvoicePanelProps) {
         ) : (
           <div className="divide-y">
             {invoices.map((invoice) => (
-              <InvoiceRow key={invoice.id} invoice={invoice} showId={showId} />
+              <InvoiceRow key={invoice.id} invoice={invoice} showId={showId} onDelete={handleDelete} />
             ))}
           </div>
         )}

@@ -10,6 +10,7 @@ export type IntegrationAdapter = {
 
   createInvoice?(params: InvoiceParams): Promise<InvoiceResult>;
   getInvoiceStatus?(externalId: string, credentialsEnc: string): Promise<InvoiceStatusResult>;
+  expireInvoice?(externalId: string, credentialsEnc: string): Promise<{ ok: boolean; error?: string }>;
 };
 
 export type InvoiceParams = {

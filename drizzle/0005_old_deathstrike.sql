@@ -1,0 +1,2 @@
+ALTER TYPE "public"."invoice_status" ADD VALUE 'prompted' BEFORE 'paid';--> statement-breakpoint
+CREATE INDEX "invoices_workspace_status_sent_at_idx" ON "invoices" USING btree ("workspace_id","status","sent_at");

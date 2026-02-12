@@ -28,11 +28,12 @@ export function useRealtime({ showId, onEvent, enabled = true }: UseRealtimeOpti
   const sourceRef = useRef<EventSource | null>(null);
   const reconnectRef = useRef<NodeJS.Timeout>();
   const attemptRef = useRef(0);
-  const enabledRef = useRef(enabled);
-  enabledRef.current = enabled;
+  const cancelledRef = useRef(false);
 
   const connect = useCallback(async () => {
-    if (!enabledRef.current || !showId) return;
+    cancelledRef.current = false;
+
+    if (!showId) return;
 
     // Get a fresh token — try refresh if the current one might be stale
     let token = getAccessToken();
@@ -46,6 +47,9 @@ export function useRealtime({ showId, onEvent, enabled = true }: UseRealtimeOpti
       console.warn('[Realtime] No access token available');
       return;
     }
+
+    // If cleanup ran while we were awaiting the token, bail out
+    if (cancelledRef.current) return;
 
     // Close any existing connection
     if (sourceRef.current) {
@@ -77,7 +81,7 @@ export function useRealtime({ showId, onEvent, enabled = true }: UseRealtimeOpti
       source.close();
       sourceRef.current = null;
 
-      if (!enabledRef.current) return;
+      if (cancelledRef.current) return;
 
       // Reconnect with exponential backoff and a fresh token
       const delay = Math.min(1000 * Math.pow(2, attemptRef.current), MAX_RECONNECT_DELAY);
@@ -95,6 +99,7 @@ export function useRealtime({ showId, onEvent, enabled = true }: UseRealtimeOpti
     }
 
     return () => {
+      cancelledRef.current = true;
       if (reconnectRef.current) {
         clearTimeout(reconnectRef.current);
       }

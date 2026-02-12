@@ -57,8 +57,8 @@ export function parseComment(
 }
 
 function matchPattern(text: string, word: string): string | null {
-  // Pattern: "word N" (e.g. "sold 123")
-  const wordFirst = new RegExp(`\\b${escapeRegex(word)}\\s+(\\d+)\\b`);
+  // Pattern: "word N" or "word on N" (e.g. "sold 123", "pass on 50")
+  const wordFirst = new RegExp(`\\b${escapeRegex(word)}\\s+(?:on\\s+)?(\\d+)\\b`);
   const m1 = text.match(wordFirst);
   if (m1) return m1[1];
 
