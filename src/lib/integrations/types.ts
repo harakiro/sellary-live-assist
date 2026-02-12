@@ -14,6 +14,7 @@ export type IntegrationAdapter = {
 
 export type InvoiceParams = {
   credentialsEnc: string;
+  showId: string;
   buyerHandle: string;
   buyerPlatformId: string;
   buyerEmail?: string;

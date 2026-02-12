@@ -30,6 +30,7 @@ export const GET = withAuth(async (req: AuthenticatedRequest, context) => {
     currency: inv.currency,
     lineItems: inv.lineItems,
     externalUrl: inv.externalUrl,
+    errorMessage: inv.errorMessage,
     sentAt: inv.sentAt?.toISOString() ?? null,
     paidAt: inv.paidAt?.toISOString() ?? null,
     createdAt: inv.createdAt.toISOString(),

@@ -17,7 +17,7 @@ type Claim = {
 };
 
 type ItemDetailDrawerProps = {
-  item: { id: string; itemNumber: string; title: string; totalQuantity: number; claimedCount: number; status: string };
+  item: { id: string; itemNumber: string; title: string; totalQuantity: number; claimedCount: number; price: number | null; status: string };
   showId: string;
   onClose: () => void;
   onRefresh: () => void;
@@ -78,6 +78,9 @@ export function ItemDetailDrawer({ item, showId, onClose, onRefresh }: ItemDetai
           </h3>
           <p className="text-sm text-gray-500">
             {item.claimedCount}/{item.totalQuantity} claimed
+            {item.price != null && (
+              <span className="ml-2">${(item.price / 100).toFixed(2)}</span>
+            )}
           </p>
         </div>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600">

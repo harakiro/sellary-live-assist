@@ -68,19 +68,46 @@ export async function POST(req: NextRequest) {
 
   // Broadcast claim event if one was created
   if (result.result && 'claimId' in result.result) {
-    if (result.result.status === 'winner' || result.result.status === 'waitlist') {
+    const r = result.result;
+    if (r.status === 'winner' || r.status === 'waitlist' || r.status === 'unmatched') {
       broadcastToShow(showId, {
         type: 'claim.created',
         data: {
-          claimId: result.result.claimId,
+          claimId: r.claimId,
           showId,
-          itemNumber: result.result.itemNumber,
+          itemNumber: r.itemNumber,
           userHandle,
-          claimStatus: result.result.status,
-          waitlistPosition: result.result.status === 'waitlist' ? result.result.position : undefined,
+          claimStatus: r.status,
+          waitlistPosition: r.status === 'waitlist' ? r.position : undefined,
           timestamp: commentInfo.timestamp.toISOString(),
         },
       });
+    } else if (r.status === 'released') {
+      broadcastToShow(showId, {
+        type: 'claim.released',
+        data: {
+          claimId: r.claimId,
+          showId,
+          itemNumber: r.itemNumber,
+          userHandle,
+          promoted: r.promoted,
+          timestamp: commentInfo.timestamp.toISOString(),
+        },
+      });
+
+      if (r.item) {
+        broadcastToShow(showId, {
+          type: 'item.updated',
+          data: {
+            itemId: r.item.id,
+            showId,
+            itemNumber: r.itemNumber,
+            claimedCount: r.item.claimedCount,
+            totalQuantity: r.item.totalQuantity,
+            status: r.item.status,
+          },
+        });
+      }
     }
   }
 

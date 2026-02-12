@@ -37,3 +37,53 @@ export async function getActiveLives(
     mediaType: m.media_type,
   }));
 }
+
+export type DMResult =
+  | { ok: true; messageId: string }
+  | { ok: false; error: string; code?: string };
+
+/**
+ * Send a direct message via Instagram Messaging API.
+ */
+export async function sendDirectMessage(
+  accessToken: string,
+  igUserId: string,
+  recipientId: string,
+  message: string,
+): Promise<DMResult> {
+  const url = `${META_GRAPH_API_BASE}/${getGraphVersion()}/${igUserId}/messages`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        access_token: accessToken,
+        recipient: { id: recipientId },
+        message: { text: message },
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error(`[IG DM] Failed to send to ${recipientId}:`, err);
+      const fbError = err.error as { code?: number; message?: string } | undefined;
+
+      if (fbError?.code === 10) {
+        return {
+          ok: false,
+          error: 'Buyer hasn\'t messaged your account on Instagram yet. Instagram requires buyers to DM you first. Copy the link and share it another way.',
+          code: 'OUTSIDE_WINDOW',
+        };
+      }
+
+      return { ok: false, error: fbError?.message || 'Instagram API error' };
+    }
+
+    const data = await res.json();
+    return { ok: true, messageId: data.message_id };
+  } catch (err) {
+    console.error(`[IG DM] Error sending to ${recipientId}:`, err);
+    return { ok: false, error: 'Network error sending message' };
+  }
+}

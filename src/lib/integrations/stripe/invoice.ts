@@ -107,7 +107,7 @@ export async function generateInvoicesForShow(
         ),
       );
 
-    if (existing) {
+    if (existing && existing.status !== 'error') {
       result.skipped++;
       result.results.push({
         buyerHandle: buyer.userHandle,
@@ -116,6 +116,11 @@ export async function generateInvoicesForShow(
         invoiceId: existing.id,
       });
       continue;
+    }
+
+    // Delete previous error record so we can retry
+    if (existing && existing.status === 'error') {
+      await db.delete(invoices).where(eq(invoices.id, existing.id));
     }
 
     try {
@@ -128,6 +133,7 @@ export async function generateInvoicesForShow(
 
       const invoiceResult = await adapter.createInvoice({
         credentialsEnc: integration.credentialsEnc,
+        showId,
         buyerHandle: buyer.userHandle || buyer.platformUserId,
         buyerPlatformId: buyer.platformUserId,
         showName: show.name,
@@ -162,12 +168,42 @@ export async function generateInvoicesForShow(
         externalUrl: invoiceResult.externalUrl,
       });
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      console.error(
+        `[invoice-gen] Failed for buyer ${buyer.userHandle || buyer.platformUserId} on show ${showId}:`,
+        err,
+      );
+
+      // Persist a failed invoice record so the error is visible in the UI
+      try {
+        const lineItems: InvoiceLineItem[] = buyer.items.map((item) => ({
+          itemNumber: item.itemNumber,
+          title: item.title,
+          quantity: item.quantity,
+          unitAmountCents: item.price ?? 0,
+        }));
+
+        await db.insert(invoices).values({
+          workspaceId,
+          showId,
+          integrationId: integration.id,
+          provider: 'stripe',
+          buyerHandle: buyer.userHandle,
+          buyerPlatformId: buyer.platformUserId,
+          status: 'error',
+          errorMessage,
+          lineItems,
+        });
+      } catch (dbErr) {
+        console.error('[invoice-gen] Failed to persist error invoice record:', dbErr);
+      }
+
       result.failed++;
       result.results.push({
         buyerHandle: buyer.userHandle,
         buyerPlatformId: buyer.platformUserId,
         status: 'error',
-        error: err instanceof Error ? err.message : 'Unknown error',
+        error: errorMessage,
       });
     }
   }

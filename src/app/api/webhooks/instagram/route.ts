@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     // Broadcast claim if created
     if (result.result && 'claimId' in result.result) {
       const r = result.result;
-      if (r.status === 'winner' || r.status === 'waitlist') {
+      if (r.status === 'winner' || r.status === 'waitlist' || r.status === 'unmatched') {
         broadcastToShow(show.id, {
           type: 'claim.created',
           data: {
@@ -103,6 +103,32 @@ export async function POST(req: NextRequest) {
             timestamp: event.timestamp.toISOString(),
           },
         });
+      } else if (r.status === 'released') {
+        broadcastToShow(show.id, {
+          type: 'claim.released',
+          data: {
+            claimId: r.claimId,
+            showId: show.id,
+            itemNumber: r.itemNumber,
+            userHandle: event.userHandle,
+            promoted: r.promoted,
+            timestamp: event.timestamp.toISOString(),
+          },
+        });
+
+        if (r.item) {
+          broadcastToShow(show.id, {
+            type: 'item.updated',
+            data: {
+              itemId: r.item.id,
+              showId: show.id,
+              itemNumber: r.itemNumber,
+              claimedCount: r.item.claimedCount,
+              totalQuantity: r.item.totalQuantity,
+              status: r.item.status,
+            },
+          });
+        }
       }
     }
   }

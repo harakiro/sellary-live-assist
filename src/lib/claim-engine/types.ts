@@ -21,18 +21,31 @@ export type CommentInfo = {
   userDisplayName: string;
   rawText: string;
   timestamp: Date;
+  parentCommentId?: string;
 };
 
 export type ClaimResult =
   | { status: 'winner'; claimId: string; itemNumber: string }
   | { status: 'waitlist'; claimId: string; itemNumber: string; position: number }
-  | { status: 'item_not_found'; itemNumber: string }
+  | { status: 'unmatched'; claimId: string; itemNumber: string }
   | { status: 'duplicate'; itemNumber: string }
   | { status: 'duplicate_user'; itemNumber: string }
   | { status: 'show_not_active'; itemNumber: string };
 
+export type ResolveUnmatchedResult = {
+  resolved: number;
+  winners: string[];
+  waitlisted: string[];
+};
+
 export type PassResult =
-  | { status: 'released'; claimId: string; promoted?: { claimId: string; userHandle: string } }
+  | {
+      status: 'released';
+      claimId: string;
+      itemNumber: string;
+      item?: { id: string; claimedCount: number; totalQuantity: number; status: string };
+      promoted?: { claimId: string; userHandle: string };
+    }
   | { status: 'no_active_claim' }
   | { status: 'item_not_found' };
 

@@ -1,19 +1,64 @@
 import Stripe from 'stripe';
 import { db } from '@/lib/db';
-import { invoices } from '@/lib/db/schema';
+import { invoices, integrations } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+import { decrypt } from '@/lib/encryption';
 import { broadcastToShow } from '@/lib/realtime/server';
+import type { StripeCredentials } from '@/lib/integrations/stripe/types';
+
+/**
+ * Resolve the workspace's Stripe credentials from the webhook payload.
+ * Parses the raw JSON (pre-verification, read-only) to extract the checkout
+ * session ID, then looks up invoices → integrations → decrypted credentials.
+ */
+async function resolveCredentials(rawBody: string): Promise<StripeCredentials | null> {
+  let sessionId: string | undefined;
+  try {
+    const payload = JSON.parse(rawBody);
+    sessionId = payload?.data?.object?.id;
+  } catch {
+    return null;
+  }
+
+  if (!sessionId) return null;
+
+  const [invoice] = await db
+    .select({ integrationId: invoices.integrationId })
+    .from(invoices)
+    .where(eq(invoices.externalId, sessionId));
+
+  if (!invoice) return null;
+
+  const [integration] = await db
+    .select({ credentialsEnc: integrations.credentialsEnc })
+    .from(integrations)
+    .where(eq(integrations.id, invoice.integrationId));
+
+  if (!integration?.credentialsEnc) return null;
+
+  return JSON.parse(decrypt(integration.credentialsEnc)) as StripeCredentials;
+}
 
 export async function handleStripeWebhook(
   rawBody: string,
   signature: string,
 ): Promise<{ processed: boolean; eventType?: string }> {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    throw new Error('STRIPE_WEBHOOK_SECRET not configured');
+  const credentials = await resolveCredentials(rawBody);
+  if (!credentials) {
+    // Can't identify the workspace — not our event. Return silently to avoid
+    // Stripe retry storms for events that don't match any invoice.
+    return { processed: false };
   }
 
-  const stripe = new Stripe(webhookSecret, { apiVersion: '2026-01-28.clover' });
+  // Use DB-stored webhook secret (production) or env var fallback (dev with Stripe CLI)
+  const webhookSecret = credentials.webhookSecret ?? process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    throw new Error(
+      'Stripe integration is missing webhook secret — please disconnect and reconnect Stripe, or set STRIPE_WEBHOOK_SECRET for local development',
+    );
+  }
+
+  const stripe = new Stripe(credentials.secretKey, { apiVersion: '2026-01-28.clover' });
   let event: Stripe.Event;
 
   try {
@@ -23,12 +68,12 @@ export async function handleStripeWebhook(
   }
 
   switch (event.type) {
-    case 'invoice.paid': {
-      const stripeInvoice = event.data.object as Stripe.Invoice;
+    case 'checkout.session.completed': {
+      const session = event.data.object as Stripe.Checkout.Session;
       const [invoice] = await db
         .select()
         .from(invoices)
-        .where(eq(invoices.externalId, stripeInvoice.id));
+        .where(eq(invoices.externalId, session.id));
 
       if (invoice) {
         await db
@@ -54,19 +99,18 @@ export async function handleStripeWebhook(
       break;
     }
 
-    case 'invoice.payment_failed': {
-      const stripeInvoice = event.data.object as Stripe.Invoice;
+    case 'checkout.session.expired': {
+      const session = event.data.object as Stripe.Checkout.Session;
       const [invoice] = await db
         .select()
         .from(invoices)
-        .where(eq(invoices.externalId, stripeInvoice.id));
+        .where(eq(invoices.externalId, session.id));
 
       if (invoice) {
         await db
           .update(invoices)
           .set({
-            status: 'error',
-            errorMessage: 'Payment failed',
+            status: 'void',
             updatedAt: new Date(),
           })
           .where(eq(invoices.id, invoice.id));
@@ -77,29 +121,10 @@ export async function handleStripeWebhook(
             invoiceId: invoice.id,
             showId: invoice.showId,
             buyerHandle: invoice.buyerHandle,
-            status: 'error',
+            status: 'void',
             timestamp: new Date().toISOString(),
           },
         });
-      }
-      break;
-    }
-
-    case 'invoice.voided': {
-      const stripeInvoice = event.data.object as Stripe.Invoice;
-      const [invoice] = await db
-        .select()
-        .from(invoices)
-        .where(eq(invoices.externalId, stripeInvoice.id));
-
-      if (invoice) {
-        await db
-          .update(invoices)
-          .set({
-            status: 'void',
-            updatedAt: new Date(),
-          })
-          .where(eq(invoices.id, invoice.id));
       }
       break;
     }

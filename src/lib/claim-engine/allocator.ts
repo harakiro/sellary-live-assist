@@ -9,6 +9,7 @@ import type {
   PassResult,
   ReleaseResult,
   AwardResult,
+  ResolveUnmatchedResult,
   ClaimIntent,
   PassIntent,
 } from './types';
@@ -23,23 +24,29 @@ export async function processComment(
   comment: CommentInfo,
   claimWord = 'sold',
   passWord = 'pass',
-): Promise<{ parsed: boolean; result: ClaimResult | PassResult | null }> {
+): Promise<{ parsed: boolean; result: ClaimResult | PassResult | null; duplicate?: boolean }> {
   const normalizedText = normalizeComment(comment.rawText);
   const intent = parseComment(normalizedText, claimWord, passWord);
 
-  // Store the comment
-  await db.insert(comments).values({
+  // Store the comment (skip if already exists from a previous poll cycle)
+  const inserted = await db.insert(comments).values({
     showId,
     liveId: comment.liveId,
     platform: comment.platform,
     platformUserId: comment.platformUserId,
     userHandle: comment.userHandle,
     commentId: comment.commentId,
+    parentCommentId: comment.parentCommentId,
     rawText: comment.rawText,
     normalizedText,
     parsed: intent !== null,
     receivedAt: comment.timestamp,
-  });
+  }).onConflictDoNothing().returning({ id: comments.id });
+
+  // Duplicate comment — already processed in a previous poll cycle
+  if (inserted.length === 0) {
+    return { parsed: false, result: null, duplicate: true };
+  }
 
   if (!intent) {
     return { parsed: false, result: null };
@@ -101,11 +108,7 @@ export async function processClaimIntent(
       status: string;
     } | undefined;
 
-    if (!item) {
-      return { status: 'item_not_found' as const, itemNumber: intent.itemNumber };
-    }
-
-    // Check idempotency
+    // Check idempotency (before item check — applies to unmatched too)
     const existingClaim = await tx
       .select({ id: claims.id })
       .from(claims)
@@ -116,7 +119,7 @@ export async function processClaimIntent(
       return { status: 'duplicate' as const, itemNumber: intent.itemNumber };
     }
 
-    // Check deduplication (same user + same item with active claim)
+    // Check deduplication (same user + same item with active claim, including unmatched)
     const userClaim = await tx
       .select({ id: claims.id })
       .from(claims)
@@ -125,13 +128,38 @@ export async function processClaimIntent(
           eq(claims.showId, showId),
           eq(claims.platformUserId, comment.platformUserId),
           eq(claims.itemNumber, intent.itemNumber),
-          sql`${claims.claimStatus} IN ('winner', 'waitlist')`,
+          sql`${claims.claimStatus} IN ('winner', 'waitlist', 'unmatched')`,
         ),
       )
       .limit(1);
 
     if (userClaim.length > 0) {
       return { status: 'duplicate_user' as const, itemNumber: intent.itemNumber };
+    }
+
+    if (!item) {
+      // Persist as unmatched claim — no item exists yet
+      const [unmatchedClaim] = await tx
+        .insert(claims)
+        .values({
+          showId,
+          showItemId: null,
+          itemNumber: intent.itemNumber,
+          platform: comment.platform,
+          liveId: comment.liveId,
+          platformUserId: comment.platformUserId,
+          userHandle: comment.userHandle,
+          userDisplayName: comment.userDisplayName,
+          commentId: comment.commentId,
+          rawText: comment.rawText,
+          normalizedText: intent.rawText,
+          claimType: 'claim',
+          claimStatus: 'unmatched',
+          idempotencyKey,
+        })
+        .returning();
+
+      return { status: 'unmatched' as const, claimId: unmatchedClaim.id, itemNumber: intent.itemNumber };
     }
 
     const available = item.total_quantity - item.claimed_count;
@@ -267,7 +295,7 @@ export async function processPassIntent(
           claimedCount: sql`GREATEST(${showItems.claimedCount} - 1, 0)`,
           updatedAt: new Date(),
         })
-        .where(eq(showItems.id, userClaim.showItemId));
+        .where(eq(showItems.id, userClaim.showItemId!));
 
       // Try to promote first waitlisted
       const [nextInLine] = await tx
@@ -296,13 +324,13 @@ export async function processPassIntent(
             claimedCount: sql`${showItems.claimedCount} + 1`,
             updatedAt: new Date(),
           })
-          .where(eq(showItems.id, userClaim.showItemId));
+          .where(eq(showItems.id, userClaim.showItemId!));
 
         // Update item status
         const [item] = await tx
           .select()
           .from(showItems)
-          .where(eq(showItems.id, userClaim.showItemId));
+          .where(eq(showItems.id, userClaim.showItemId!));
 
         const newStatus =
           item.claimedCount >= item.totalQuantity
@@ -314,11 +342,13 @@ export async function processPassIntent(
         await tx
           .update(showItems)
           .set({ status: newStatus, updatedAt: new Date() })
-          .where(eq(showItems.id, userClaim.showItemId));
+          .where(eq(showItems.id, userClaim.showItemId!));
 
         return {
           status: 'released' as const,
           claimId: userClaim.id,
+          itemNumber: intent.itemNumber,
+          item: { id: item.id, claimedCount: item.claimedCount, totalQuantity: item.totalQuantity, status: newStatus },
           promoted: { claimId: nextInLine.id, userHandle: nextInLine.userHandle || '' },
         };
       }
@@ -327,7 +357,7 @@ export async function processPassIntent(
       const [item] = await tx
         .select()
         .from(showItems)
-        .where(eq(showItems.id, userClaim.showItemId));
+        .where(eq(showItems.id, userClaim.showItemId!));
 
       const newStatus =
         item.claimedCount >= item.totalQuantity
@@ -339,13 +369,18 @@ export async function processPassIntent(
       await tx
         .update(showItems)
         .set({ status: newStatus, updatedAt: new Date() })
-        .where(eq(showItems.id, userClaim.showItemId));
+        .where(eq(showItems.id, userClaim.showItemId!));
 
-      return { status: 'released' as const, claimId: userClaim.id };
+      return {
+        status: 'released' as const,
+        claimId: userClaim.id,
+        itemNumber: intent.itemNumber,
+        item: { id: item.id, claimedCount: item.claimedCount, totalQuantity: item.totalQuantity, status: newStatus },
+      };
     }
 
     // Was waitlist — just released, no promotion needed
-    return { status: 'released' as const, claimId: userClaim.id };
+    return { status: 'released' as const, claimId: userClaim.id, itemNumber: intent.itemNumber };
   });
 }
 
@@ -390,7 +425,7 @@ export async function releaseClaim(
           claimedCount: sql`GREATEST(${showItems.claimedCount} - 1, 0)`,
           updatedAt: new Date(),
         })
-        .where(eq(showItems.id, claim.showItemId));
+        .where(eq(showItems.id, claim.showItemId!));
 
       // Promote next in waitlist
       const [nextInLine] = await tx
@@ -418,7 +453,7 @@ export async function releaseClaim(
             claimedCount: sql`${showItems.claimedCount} + 1`,
             updatedAt: new Date(),
           })
-          .where(eq(showItems.id, claim.showItemId));
+          .where(eq(showItems.id, claim.showItemId!));
 
         return {
           status: 'released' as const,
@@ -430,7 +465,7 @@ export async function releaseClaim(
       const [item] = await tx
         .select()
         .from(showItems)
-        .where(eq(showItems.id, claim.showItemId));
+        .where(eq(showItems.id, claim.showItemId!));
 
       const newStatus =
         item.claimedCount >= item.totalQuantity
@@ -442,7 +477,7 @@ export async function releaseClaim(
       await tx
         .update(showItems)
         .set({ status: newStatus, updatedAt: new Date() })
-        .where(eq(showItems.id, claim.showItemId));
+        .where(eq(showItems.id, claim.showItemId!));
     }
 
     return { status: 'released' as const };
@@ -513,5 +548,123 @@ export async function manualAward(
       .where(eq(showItems.id, item.id));
 
     return { status: 'awarded' as const, claimId: claim.id };
+  });
+}
+
+/**
+ * Resolve unmatched claims when a missing item is finally created.
+ * Uses FIFO ordering (created_at) — first N get winner, rest go to waitlist.
+ */
+export async function resolveUnmatchedClaims(
+  db: Database,
+  showId: string,
+  showItemId: string,
+  itemNumber: string,
+): Promise<ResolveUnmatchedResult> {
+  return db.transaction(async (tx) => {
+    // Lock the item row
+    const itemRows = await tx.execute(
+      sql`SELECT id, total_quantity, claimed_count
+          FROM show_items
+          WHERE id = ${showItemId} AND show_id = ${showId}
+          FOR UPDATE`,
+    );
+
+    const item = itemRows.rows[0] as {
+      id: string;
+      total_quantity: number;
+      claimed_count: number;
+    } | undefined;
+
+    if (!item) {
+      return { resolved: 0, winners: [], waitlisted: [] };
+    }
+
+    // Fetch all unmatched claims for this item number, FIFO order
+    const unmatchedClaims = await tx
+      .select()
+      .from(claims)
+      .where(
+        and(
+          eq(claims.showId, showId),
+          eq(claims.itemNumber, itemNumber),
+          eq(claims.claimStatus, 'unmatched'),
+        ),
+      )
+      .orderBy(claims.createdAt);
+
+    if (unmatchedClaims.length === 0) {
+      return { resolved: 0, winners: [], waitlisted: [] };
+    }
+
+    let claimedCount = item.claimed_count;
+    const winners: string[] = [];
+    const waitlisted: string[] = [];
+
+    // Find next waitlist position
+    const posResult = await tx.execute(
+      sql`SELECT COALESCE(MAX(waitlist_position), 0) as max_pos
+          FROM claims
+          WHERE show_id = ${showId}
+            AND item_number = ${itemNumber}
+            AND claim_status = 'waitlist'`,
+    );
+    let nextWaitlistPos = ((posResult.rows[0] as { max_pos: number }).max_pos) + 1;
+
+    for (const claim of unmatchedClaims) {
+      const available = item.total_quantity - claimedCount;
+
+      if (available > 0) {
+        // Promote to winner
+        await tx
+          .update(claims)
+          .set({
+            claimStatus: 'winner',
+            showItemId,
+            updatedAt: new Date(),
+          })
+          .where(eq(claims.id, claim.id));
+
+        claimedCount++;
+        winners.push(claim.id);
+      } else {
+        // Move to waitlist
+        await tx
+          .update(claims)
+          .set({
+            claimStatus: 'waitlist',
+            showItemId,
+            waitlistPosition: nextWaitlistPos,
+            updatedAt: new Date(),
+          })
+          .where(eq(claims.id, claim.id));
+
+        waitlisted.push(claim.id);
+        nextWaitlistPos++;
+      }
+    }
+
+    // Update item claimedCount and status
+    const newStatus =
+      claimedCount >= item.total_quantity
+        ? 'sold_out'
+        : claimedCount > 0
+          ? 'partial'
+          : 'unclaimed';
+
+    await tx
+      .update(showItems)
+      .set({
+        claimedCount,
+        status: newStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(showItems.id, showItemId));
+
+    return {
+      resolved: winners.length + waitlisted.length,
+      winners,
+      waitlisted,
+    };
   });
 }

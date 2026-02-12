@@ -13,8 +13,8 @@ function getAppCredentials() {
 
 /**
  * Build the Facebook OAuth authorization URL.
- * Requests pages_show_list, pages_read_engagement, and pages_manage_metadata
- * for reading live video comments.
+ * Requests pages_show_list, pages_read_engagement, pages_read_user_content,
+ * and pages_manage_metadata for reading live video comments.
  */
 export function buildFBAuthUrl(redirectUri: string, state: string): string {
   const { appId } = getAppCredentials();
@@ -22,6 +22,9 @@ export function buildFBAuthUrl(redirectUri: string, state: string): string {
     'pages_show_list',
     'pages_read_engagement',
     'pages_read_user_content',
+    'pages_manage_metadata',
+    'pages_manage_engagement',
+    'pages_messaging',
   ].join(',');
 
   const params = new URLSearchParams({

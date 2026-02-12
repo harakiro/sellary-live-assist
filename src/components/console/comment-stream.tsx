@@ -9,6 +9,7 @@ type CommentEntry = {
   userHandle: string;
   text: string;
   parsed: boolean;
+  isReply?: boolean;
   timestamp: string;
 };
 
@@ -53,17 +54,25 @@ export function CommentStream({ entries }: CommentStreamProps) {
                 className={cn(
                   'px-3 py-2',
                   entry.parsed && 'bg-yellow-50/50',
+                  entry.isReply && 'ml-6 border-l-2 border-brand-200',
                 )}
               >
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-gray-400 font-mono">
                     {new Date(entry.timestamp).toLocaleTimeString()}
                   </span>
-                  <span className="text-xs font-semibold text-gray-600">
+                  <span className={cn(
+                    'text-xs font-semibold',
+                    entry.isReply ? 'text-gray-400' : 'text-gray-600',
+                  )}>
                     @{entry.userHandle || 'unknown'}
                   </span>
                 </div>
-                <p className={cn('text-sm mt-0.5', entry.parsed && 'font-medium text-brand-700')}>
+                <p className={cn(
+                  'text-sm mt-0.5',
+                  entry.parsed && 'font-medium text-brand-700',
+                  entry.isReply && !entry.parsed && 'text-gray-500',
+                )}>
                   {entry.text}
                 </p>
               </div>

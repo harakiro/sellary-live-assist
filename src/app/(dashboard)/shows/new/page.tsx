@@ -12,6 +12,8 @@ export default function NewShowPage() {
   const [name, setName] = useState('');
   const [claimWord, setClaimWord] = useState('sold');
   const [passWord, setPassWord] = useState('pass');
+  const [autoNumberEnabled, setAutoNumberEnabled] = useState(false);
+  const [autoNumberStart, setAutoNumberStart] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -22,7 +24,7 @@ export default function NewShowPage() {
 
     const res = await apiFetch<{ id: string }>('/api/shows', {
       method: 'POST',
-      body: JSON.stringify({ name, claimWord, passWord }),
+      body: JSON.stringify({ name, claimWord, passWord, autoNumberEnabled, autoNumberStart }),
     });
 
     if ('data' in res) {
@@ -86,6 +88,32 @@ export default function NewShowPage() {
                 />
                 <p className="text-xs text-gray-500 mt-1">e.g. &quot;pass 123&quot;</p>
               </div>
+            </div>
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoNumberEnabled}
+                  onChange={(e) => setAutoNumberEnabled(e.target.checked)}
+                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Auto-number items</span>
+              </label>
+              <p className="text-xs text-gray-500 mt-1">Automatically assign sequential item numbers</p>
+              {autoNumberEnabled && (
+                <div className="mt-2 w-40">
+                  <label htmlFor="autoNumberStart" className="block text-sm font-medium text-gray-700 mb-1">
+                    Starting Number
+                  </label>
+                  <Input
+                    id="autoNumberStart"
+                    type="number"
+                    min={0}
+                    value={autoNumberStart}
+                    onChange={(e) => setAutoNumberStart(Number(e.target.value))}
+                  />
+                </div>
+              )}
             </div>
             <div className="flex gap-3 pt-2">
               <Button type="submit" disabled={loading}>

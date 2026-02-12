@@ -5,15 +5,38 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Tv, Link2, Puzzle, Settings, LogOut } from 'lucide-react';
+import { Home, Tv, ShoppingCart, Link2, Puzzle, Settings, LogOut } from 'lucide-react';
 
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+
+const primaryNav: NavItem[] = [
+  { href: '/dashboard', label: 'Home', icon: Home },
   { href: '/shows', label: 'Shows', icon: Tv },
-  { href: '/connections', label: 'Connections', icon: Link2 },
+  { href: '/carts', label: 'Carts', icon: ShoppingCart },
+];
+
+const secondaryNav: NavItem[] = [
+  { href: '/sales-channels', label: 'Sales Channels', icon: Link2 },
   { href: '/integrations', label: 'Integrations', icon: Puzzle },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
+
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const Icon = item.icon;
+  const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+  return (
+    <Link
+      href={item.href}
+      className={cn(
+        'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+        active ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white',
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      {item.label}
+    </Link>
+  );
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
@@ -42,24 +65,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="p-4 border-b border-gray-700">
           <h1 className="text-lg font-bold">Sellary Live Assist</h1>
         </div>
-        <nav className="flex-1 p-4 space-y-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-                  active ? 'bg-brand-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white',
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 p-4">
+          <div className="space-y-1">
+            {primaryNav.map((item) => (
+              <NavLink key={item.href} item={item} pathname={pathname} />
+            ))}
+          </div>
+          <div className="my-4 border-t border-gray-700" />
+          <div className="space-y-1">
+            {secondaryNav.map((item) => (
+              <NavLink key={item.href} item={item} pathname={pathname} />
+            ))}
+          </div>
         </nav>
         <div className="p-4 border-t border-gray-700">
           <div className="text-sm text-gray-400 mb-2 truncate">{user.email}</div>

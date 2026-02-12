@@ -12,6 +12,10 @@ const updateSchema = z.object({
       defaultClaimWord: z.string().min(1).max(50).optional(),
       defaultPassWord: z.string().min(1).max(50).optional(),
       defaultPollingInterval: z.number().int().min(2).max(10).optional(),
+      autoReplyEnabled: z.boolean().optional(),
+      replyTemplatesWinner: z.array(z.string().min(1).max(500)).max(10).optional(),
+      replyTemplatesDuplicate: z.array(z.string().min(1).max(500)).max(10).optional(),
+      replyTemplatesWaitlist: z.array(z.string().min(1).max(500)).max(10).optional(),
     })
     .optional(),
 });
@@ -68,7 +72,17 @@ async function handlePatch(
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (parsed.data.name) updates.name = parsed.data.name;
-  if (parsed.data.settings) updates.settings = parsed.data.settings;
+
+  if (parsed.data.settings) {
+    // Merge new settings into existing settings so partial updates don't wipe other keys
+    const [current] = await db
+      .select({ settings: workspaces.settings })
+      .from(workspaces)
+      .where(eq(workspaces.id, wsId!))
+      .limit(1);
+    const existingSettings = (current?.settings as Record<string, unknown>) || {};
+    updates.settings = { ...existingSettings, ...parsed.data.settings };
+  }
 
   const [updated] = await db
     .update(workspaces)

@@ -62,8 +62,8 @@ export default function ConnectionsPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Connections</h1>
-        <p className="text-gray-500 mt-1">Connect your social media accounts</p>
+        <h1 className="text-2xl font-bold text-gray-900">Sales Channels</h1>
+        <p className="text-gray-500 mt-1">Link your social media accounts</p>
       </div>
 
       {success && (
@@ -73,7 +73,7 @@ export default function ConnectionsPage() {
       )}
       {error && (
         <div className="mb-6 bg-red-50 text-red-700 p-3 rounded-md text-sm">
-          Connection failed: {error}
+          Failed to link account: {error}
         </div>
       )}
 
@@ -115,7 +115,7 @@ export default function ConnectionsPage() {
       ) : connections.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Connected Accounts ({connections.length})</CardTitle>
+            <CardTitle className="text-lg">Linked Accounts ({connections.length})</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="divide-y">
@@ -160,7 +160,7 @@ export default function ConnectionsPage() {
         </Card>
       ) : (
         <div className="text-center py-8 text-gray-500 text-sm">
-          No accounts connected yet. Use the buttons above to get started.
+          No accounts linked yet. Use the buttons above to get started.
         </div>
       )}
     </div>

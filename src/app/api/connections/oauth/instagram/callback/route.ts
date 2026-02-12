@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
   if (error || !code) {
     return NextResponse.redirect(
-      `${appUrl}/connections?error=${encodeURIComponent(error || 'no_code')}`,
+      `${appUrl}/sales-channels?error=${encodeURIComponent(error || 'no_code')}`,
     );
   }
 
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     const igAccounts = await getConnectedIGAccounts(longToken.accessToken);
 
     if (!workspaceId) {
-      return NextResponse.redirect(`${appUrl}/connections?error=no_workspace`);
+      return NextResponse.redirect(`${appUrl}/sales-channels?error=no_workspace`);
     }
 
     for (const account of igAccounts) {
@@ -53,17 +53,17 @@ export async function GET(req: NextRequest) {
           displayName: `@${account.username}`,
           encryptedAccessToken: encryptedToken,
           tokenExpiresAt: new Date(Date.now() + longToken.expiresIn * 1000),
-          scopes: ['instagram_basic', 'instagram_manage_comments'],
+          scopes: ['instagram_basic', 'instagram_manage_comments', 'instagram_manage_messages'],
           status: 'active',
         })
         .onConflictDoNothing();
     }
 
     return NextResponse.redirect(
-      `${appUrl}/connections?success=instagram&count=${igAccounts.length}`,
+      `${appUrl}/sales-channels?success=instagram&count=${igAccounts.length}`,
     );
   } catch (err) {
     console.error('Instagram OAuth callback error:', err);
-    return NextResponse.redirect(`${appUrl}/connections?error=oauth_failed`);
+    return NextResponse.redirect(`${appUrl}/sales-channels?error=oauth_failed`);
   }
 }

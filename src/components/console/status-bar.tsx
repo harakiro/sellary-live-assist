@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { apiFetch } from '@/lib/api-client';
-import { Pause, Play, Square, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, Pause, Play, Square, Wifi, WifiOff } from 'lucide-react';
 
 type StatusBarProps = {
   showName: string;
@@ -53,6 +54,9 @@ export function StatusBar({
   return (
     <div className="h-14 border-b bg-white flex items-center justify-between px-4">
       <div className="flex items-center gap-4">
+        <Link href={`/shows/${showId}`} className="text-gray-400 hover:text-gray-600 transition-colors">
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
         <h2 className="font-semibold text-gray-900">{showName}</h2>
         <div className="flex items-center gap-1.5">
           {status === 'active' && (

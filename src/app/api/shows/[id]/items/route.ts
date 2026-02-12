@@ -54,8 +54,8 @@ async function handlePost(
   }
 
   const itemsToInsert = isBatch
-    ? (parsed.data as { items: Array<{ itemNumber: string; title: string; description?: string; totalQuantity: number }> }).items
-    : [parsed.data as { itemNumber: string; title: string; description?: string; totalQuantity: number }];
+    ? (parsed.data as { items: Array<{ itemNumber: string; title: string; description?: string; totalQuantity: number; price?: number | null }> }).items
+    : [parsed.data as { itemNumber: string; title: string; description?: string; totalQuantity: number; price?: number | null }];
 
   try {
     const inserted = await db
@@ -67,6 +67,7 @@ async function handlePost(
           title: item.title,
           description: item.description,
           totalQuantity: item.totalQuantity,
+          price: item.price ?? null,
         })),
       )
       .returning();

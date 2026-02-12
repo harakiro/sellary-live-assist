@@ -16,12 +16,15 @@ type ShowData = {
   status: string;
   startedAt: string | null;
   claimWord: string;
+  autoNumberEnabled: boolean;
+  autoNumberStart: number;
   items: Array<{
     id: string;
     itemNumber: string;
     title: string;
     totalQuantity: number;
     claimedCount: number;
+    price: number | null;
     status: string;
   }>;
   stats: { totalClaims: number; winners: number; waitlisted: number; uniqueBuyers: number };
@@ -246,6 +249,8 @@ export default function ConsolePage() {
             onRefresh={fetchShow}
             prefillItemNumber={prefillItemNumber}
             onPrefillConsumed={() => setPrefillItemNumber(null)}
+            autoNumberEnabled={show.autoNumberEnabled}
+            autoNumberStart={show.autoNumberStart}
           />
         </div>
         <div className="flex-1 overflow-y-auto bg-white">

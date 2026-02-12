@@ -55,18 +55,6 @@ export function StripeBYOKForm({ onConnected }: StripeBYOKFormProps) {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Secret Key
-          </label>
-          <Input
-            type="password"
-            placeholder="sk_live_..."
-            value={secretKey}
-            onChange={(e) => setSecretKey(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
             Publishable Key
           </label>
           <Input
@@ -74,6 +62,18 @@ export function StripeBYOKForm({ onConnected }: StripeBYOKFormProps) {
             placeholder="pk_live_..."
             value={publishableKey}
             onChange={(e) => setPublishableKey(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Secret Key
+          </label>
+          <Input
+            type="password"
+            placeholder="sk_live_..."
+            value={secretKey}
+            onChange={(e) => setSecretKey(e.target.value)}
           />
         </div>
 

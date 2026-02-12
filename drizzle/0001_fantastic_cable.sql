@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "social_connections_workspace_platform_account_idx" ON "social_connections" USING btree ("workspace_id","platform","external_account_id");

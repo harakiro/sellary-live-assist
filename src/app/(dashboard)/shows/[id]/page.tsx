@@ -9,7 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/hooks/use-auth';
-import { Play, Pause, Square, Plus, Monitor, Wifi, Radio, Check, Loader2, AlertTriangle, MessageSquare } from 'lucide-react';
+import { Play, Pause, Square, Plus, Monitor, Wifi, Radio, Check, Loader2, AlertTriangle, MessageSquare, Trash2 } from 'lucide-react';
 import { InvoicePanel } from '@/components/integrations/invoice-panel';
 
 type ShowItem = {
@@ -18,6 +18,7 @@ type ShowItem = {
   title: string;
   description: string | null;
   totalQuantity: number;
+  price: number | null;
   claimedCount: number;
   status: string;
 };
@@ -32,6 +33,8 @@ type Show = {
   liveUrl: string | null;
   claimWord: string;
   passWord: string;
+  autoNumberEnabled: boolean;
+  autoNumberStart: number;
   startedAt: string | null;
   items: ShowItem[];
   stats: { totalClaims: number; winners: number; waitlisted: number; uniqueBuyers: number };
@@ -51,6 +54,12 @@ type LiveVideo = {
   status: string;
   permalink?: string;
 };
+
+function getNextItemNumber(items: { itemNumber: string }[], startNumber: number): string {
+  if (items.length === 0) return String(startNumber);
+  const nums = items.map(i => parseInt(i.itemNumber, 10)).filter(n => !isNaN(n));
+  return nums.length > 0 ? String(Math.max(...nums) + 1) : String(startNumber);
+}
 
 const statusBadgeVariant = (status: string) => {
   switch (status) {
@@ -72,6 +81,7 @@ export default function ShowDetailPage() {
   const [loading, setLoading] = useState(true);
   const [itemNumber, setItemNumber] = useState('');
   const [itemTitle, setItemTitle] = useState('');
+  const [itemPrice, setItemPrice] = useState('');
   const [itemQty, setItemQty] = useState(1);
   const [addingItem, setAddingItem] = useState(false);
   const [stripeConnected, setStripeConnected] = useState(false);
@@ -96,6 +106,10 @@ export default function ShowDetailPage() {
       if (res.data.platform) setSelectedPlatform(res.data.platform);
       if (res.data.connectionId) setSelectedConnectionId(res.data.connectionId);
       if (res.data.liveId) setSelectedLiveId(res.data.liveId);
+      // Pre-fill auto-number
+      if (res.data.autoNumberEnabled) {
+        setItemNumber(getNextItemNumber(res.data.items, res.data.autoNumberStart));
+      }
     }
     setLoading(false);
   }
@@ -115,12 +129,13 @@ export default function ShowDetailPage() {
   async function addItem(e: FormEvent) {
     e.preventDefault();
     setAddingItem(true);
+    const price = itemPrice ? Math.round(parseFloat(itemPrice) * 100) : null;
     await apiFetch(`/api/shows/${showId}/items`, {
       method: 'POST',
-      body: JSON.stringify({ itemNumber, title: itemTitle, totalQuantity: itemQty }),
+      body: JSON.stringify({ itemNumber, title: itemTitle, totalQuantity: itemQty, price }),
     });
-    setItemNumber('');
     setItemTitle('');
+    setItemPrice('');
     setItemQty(1);
     setAddingItem(false);
     fetchShow();
@@ -233,10 +248,10 @@ export default function ShowDetailPage() {
             <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
             <div>
               <p className="text-sm font-medium text-amber-800">
-                No connection or live source configured
+                No sales channel or live source configured
               </p>
               <p className="text-sm text-amber-700 mt-1">
-                You can set up a connection now, or start the show without one and add it later.
+                You can set up a sales channel now, or start the show without one and add it later.
               </p>
               <div className="flex gap-2 mt-3">
                 <Button
@@ -247,7 +262,7 @@ export default function ShowDetailPage() {
                     document.getElementById('connection-card')?.scrollIntoView({ behavior: 'smooth' });
                   }}
                 >
-                  Set Up Connection
+                  Set Up Sales Channel
                 </Button>
                 <Button
                   size="sm"
@@ -256,7 +271,7 @@ export default function ShowDetailPage() {
                     lifecycleAction('activate');
                   }}
                 >
-                  Start Without Connection
+                  Start Without Sales Channel
                 </Button>
                 <button
                   type="button"
@@ -276,7 +291,7 @@ export default function ShowDetailPage() {
         <Card id="connection-card" className="mb-8">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Wifi className="h-5 w-5" /> Connection &amp; Live Source
+              <Wifi className="h-5 w-5" /> Sales Channel &amp; Live Source
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -285,7 +300,7 @@ export default function ShowDetailPage() {
               <div className="flex items-center gap-2 text-sm bg-amber-50 text-amber-700 border border-amber-200 rounded-md px-3 py-2">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>
-                  This show is active but has no connection. Comments won&apos;t be monitored until a live source is configured.
+                  This show is active but has no sales channel. Comments won&apos;t be monitored until a live source is configured.
                 </span>
               </div>
             )}
@@ -331,9 +346,9 @@ export default function ShowDetailPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Account</label>
                 {filteredConnections.length === 0 ? (
                   <p className="text-sm text-gray-500">
-                    No active {selectedPlatform} connections.{' '}
-                    <Link href="/connections" className="text-brand-600 underline">
-                      Connect a page
+                    No active {selectedPlatform} sales channels.{' '}
+                    <Link href="/sales-channels" className="text-brand-600 underline">
+                      Link a page
                     </Link>
                   </p>
                 ) : (
@@ -444,7 +459,7 @@ export default function ShowDetailPage() {
                 {savingConnection ? (
                   <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Saving...</>
                 ) : (
-                  'Save Connection'
+                  'Save Sales Channel'
                 )}
               </Button>
             )}
@@ -480,7 +495,46 @@ export default function ShowDetailPage() {
       {show.status === 'draft' && (
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle className="text-lg">Add Item</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg">Add Item</CardTitle>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={show.autoNumberEnabled}
+                    onChange={async (e) => {
+                      const enabled = e.target.checked;
+                      await apiFetch(`/api/shows/${showId}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ autoNumberEnabled: enabled }),
+                      });
+                      fetchShow();
+                    }}
+                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <span className="text-sm text-gray-700">Auto-number</span>
+                </label>
+                {show.autoNumberEnabled && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-500">Start:</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={show.autoNumberStart}
+                      onChange={async (e) => {
+                        const val = Number(e.target.value);
+                        await apiFetch(`/api/shows/${showId}`, {
+                          method: 'PATCH',
+                          body: JSON.stringify({ autoNumberStart: val }),
+                        });
+                        fetchShow();
+                      }}
+                      className="h-7 text-xs w-16"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <form onSubmit={addItem} className="flex items-end gap-3">
@@ -500,6 +554,17 @@ export default function ShowDetailPage() {
                   onChange={(e) => setItemTitle(e.target.value)}
                   required
                   placeholder="Blue Floral Dress"
+                />
+              </div>
+              <div className="w-24">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={itemPrice}
+                  onChange={(e) => setItemPrice(e.target.value)}
+                  placeholder="$0.00"
                 />
               </div>
               <div className="w-20">
@@ -537,22 +602,44 @@ export default function ShowDetailPage() {
                       #{item.itemNumber}
                     </span>
                     <div>
-                      <div className="font-medium">{item.title}</div>
+                      <div className="font-medium">
+                        {item.title}
+                        {item.price != null && (
+                          <span className="ml-2 text-sm text-gray-500 font-normal">
+                            ${(item.price / 100).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-sm text-gray-500">
                         {item.claimedCount}/{item.totalQuantity} claimed
                       </div>
                     </div>
                   </div>
-                  <Badge
-                    variant={
-                      item.status === 'sold_out' ? 'destructive' :
-                      item.status === 'partial' ? 'warning' :
-                      item.status === 'claimed' ? 'success' :
-                      'outline'
-                    }
-                  >
-                    {item.status.replace('_', ' ')}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        item.status === 'sold_out' ? 'destructive' :
+                        item.status === 'partial' ? 'warning' :
+                        item.status === 'claimed' ? 'success' :
+                        'outline'
+                      }
+                    >
+                      {item.status.replace('_', ' ')}
+                    </Badge>
+                    {item.claimedCount === 0 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await apiFetch(`/api/shows/${showId}/items/${item.id}`, { method: 'DELETE' });
+                          fetchShow();
+                        }}
+                        className="text-gray-400 hover:text-red-500 transition-colors"
+                        title="Delete item"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

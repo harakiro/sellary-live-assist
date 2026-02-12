@@ -23,7 +23,7 @@ async function handler(
   let query = db.select().from(claims).where(eq(claims.showId, showId)).$dynamic();
 
   if (status) {
-    query = query.where(and(eq(claims.showId, showId), eq(claims.claimStatus, status as 'winner' | 'waitlist' | 'released' | 'passed')));
+    query = query.where(and(eq(claims.showId, showId), eq(claims.claimStatus, status as 'winner' | 'waitlist' | 'released' | 'passed' | 'unmatched')));
   }
 
   if (itemNumber) {
@@ -32,7 +32,16 @@ async function handler(
 
   const result = await query.orderBy(desc(claims.createdAt));
 
-  return NextResponse.json({ data: result });
+  const mapped = result.map((c) => ({
+    id: c.id,
+    itemNumber: c.itemNumber,
+    userHandle: c.userHandle ?? 'unknown',
+    claimStatus: c.claimStatus,
+    waitlistPosition: c.waitlistPosition,
+    timestamp: c.createdAt.toISOString(),
+  }));
+
+  return NextResponse.json({ data: mapped });
 }
 
 export const GET = withAuth(handler);

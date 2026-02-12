@@ -1,0 +1,2 @@
+ALTER TABLE "comments" ADD COLUMN "parent_comment_id" varchar(255);--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "comments_show_comment_id_idx" ON "comments" USING btree ("show_id","comment_id");

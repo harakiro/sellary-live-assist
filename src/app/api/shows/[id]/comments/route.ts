@@ -28,7 +28,17 @@ async function handler(
     .limit(limit)
     .offset(offset);
 
-  return NextResponse.json({ data: result });
+  const mapped = result.map((c) => ({
+    id: c.commentId ?? c.id,
+    userHandle: c.userHandle ?? 'unknown',
+    text: c.rawText,
+    parsed: c.parsed,
+    isReply: !!c.parentCommentId,
+    parentCommentId: c.parentCommentId ?? undefined,
+    timestamp: c.receivedAt.toISOString(),
+  }));
+
+  return NextResponse.json({ data: mapped });
 }
 
 export const GET = withAuth(handler);

@@ -3,12 +3,14 @@ import { withAuth, type AuthenticatedRequest } from '@/lib/auth/middleware';
 import { db } from '@/lib/db';
 import { invoices } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { sendCheckoutDM } from '@/lib/platforms/messaging';
 
 export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
+  const showId = context?.params?.id;
   const invoiceId = context?.params?.invoiceId;
-  if (!invoiceId) {
+  if (!invoiceId || !showId) {
     return NextResponse.json(
-      { error: { code: 'BAD_REQUEST', message: 'Invoice ID required' } },
+      { error: { code: 'BAD_REQUEST', message: 'Show ID and Invoice ID required' } },
       { status: 400 },
     );
   }
@@ -34,20 +36,28 @@ export const POST = withAuth(async (req: AuthenticatedRequest, context) => {
     );
   }
 
-  // Update sent timestamp
-  await db
-    .update(invoices)
-    .set({ sentAt: new Date(), updatedAt: new Date() })
-    .where(eq(invoices.id, invoiceId));
+  const dmResult = await sendCheckoutDM({
+    showId,
+    buyerPlatformId: invoice.buyerPlatformId || '',
+    buyerHandle: invoice.buyerHandle,
+    checkoutUrl: invoice.externalUrl,
+  });
 
-  // Return the checkout URL for manual sharing
-  // (Facebook DM sending would require pages_messaging permission, deferred)
+  if (dmResult.sent) {
+    await db
+      .update(invoices)
+      .set({ sentAt: new Date(), updatedAt: new Date() })
+      .where(eq(invoices.id, invoiceId));
+  }
+
   return NextResponse.json({
     data: {
       invoiceId: invoice.id,
       buyerHandle: invoice.buyerHandle,
       checkoutUrl: invoice.externalUrl,
-      sent: true,
+      sent: dmResult.sent,
+      prompted: dmResult.prompted,
+      error: dmResult.error,
     },
   });
 });

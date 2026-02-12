@@ -1,11 +1,19 @@
 import { db } from '@/lib/db';
-import { shows, comments as commentsTable } from '@/lib/db/schema';
+import { shows, workspaces, comments as commentsTable } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { getLiveComments, RateLimitError, type FBComment } from './api';
 import { processComment } from '@/lib/claim-engine/allocator';
 import { broadcastToShow } from '@/lib/realtime/server';
 import { decrypt } from '@/lib/encryption';
+import { sendAutoReply, type ReplyCase } from './reply';
 import type { CommentInfo } from '@/lib/claim-engine/types';
+
+type WorkspaceAutoReplySettings = {
+  autoReplyEnabled?: boolean;
+  replyTemplatesWinner?: string[];
+  replyTemplatesDuplicate?: string[];
+  replyTemplatesWaitlist?: string[];
+};
 
 type PollingState = {
   timer: NodeJS.Timeout | null;
@@ -13,36 +21,30 @@ type PollingState = {
   running: boolean;
   backoffMs: number;
   seenCommentIds: Set<string>;
+  // Stored so we can restart after HMR kills timers
+  liveVideoId: string;
+  encryptedAccessToken: string;
+  intervalMs: number;
 };
 
-const activePollers = new Map<string, PollingState>();
+// Persist across Next.js HMR reloads in dev
+const g = globalThis as unknown as {
+  __activePollers?: Map<string, PollingState>;
+};
+if (!g.__activePollers) {
+  g.__activePollers = new Map();
+}
+const activePollers = g.__activePollers;
 
-const DEFAULT_INTERVAL_MS = 2000;
+const DEFAULT_INTERVAL_MS = 5000;
 const MAX_BACKOFF_MS = 30000;
 const BASE_BACKOFF_MS = 2000;
 
 /**
- * Start polling comments for a live video.
+ * The core polling loop — shared between startPolling and HMR recovery.
  */
-export function startPolling(
-  showId: string,
-  liveVideoId: string,
-  encryptedAccessToken: string,
-  intervalMs = DEFAULT_INTERVAL_MS,
-) {
-  if (activePollers.has(showId)) {
-    stopPolling(showId);
-  }
-
-  const state: PollingState = {
-    timer: null,
-    afterCursor: null,
-    running: true,
-    backoffMs: 0,
-    seenCommentIds: new Set(),
-  };
-
-  activePollers.set(showId, state);
+function createPollLoop(showId: string, state: PollingState) {
+  const { liveVideoId, encryptedAccessToken, intervalMs } = state;
 
   async function poll() {
     if (!state.running) return;
@@ -51,17 +53,21 @@ export function startPolling(
       const accessToken = decrypt(encryptedAccessToken);
       const page = await getLiveComments(accessToken, liveVideoId, state.afterCursor ?? undefined);
 
-      // Reset backoff on success
       state.backoffMs = 0;
 
-      // Update cursor for next page
+      console.log(`[Polling ${showId}] Fetched ${page.comments.length} comments, cursor: ${state.afterCursor ?? 'none'} -> ${page.afterCursor ?? 'none'}`);
+
       if (page.afterCursor) {
         state.afterCursor = page.afterCursor;
       }
 
-      // Get show data for claim/pass words
       const [show] = await db
-        .select({ claimWord: shows.claimWord, passWord: shows.passWord, status: shows.status })
+        .select({
+          claimWord: shows.claimWord,
+          passWord: shows.passWord,
+          status: shows.status,
+          workspaceId: shows.workspaceId,
+        })
         .from(shows)
         .where(eq(shows.id, showId))
         .limit(1);
@@ -71,10 +77,26 @@ export function startPolling(
         return;
       }
 
-      // Process new comments (skip already seen)
+      // Fetch workspace settings for auto-reply (once per poll cycle)
+      let autoReplySettings: WorkspaceAutoReplySettings = {};
+      const [ws] = await db
+        .select({ settings: workspaces.settings })
+        .from(workspaces)
+        .where(eq(workspaces.id, show.workspaceId))
+        .limit(1);
+      if (ws?.settings) {
+        autoReplySettings = ws.settings as WorkspaceAutoReplySettings;
+      }
+
       for (const fbComment of page.comments) {
         if (state.seenCommentIds.has(fbComment.id)) continue;
         state.seenCommentIds.add(fbComment.id);
+
+        if (!fbComment.from) {
+          console.log(`[Polling ${showId}] Comment ${fbComment.id} missing 'from' (dev mode limitation), using fallback`);
+        }
+
+        console.log(`[Polling ${showId}] Processing comment from ${fbComment.from?.name ?? 'unknown'}: "${fbComment.message}"`);
 
         const commentInfo = fbCommentToCommentInfo(fbComment, liveVideoId);
 
@@ -86,7 +108,8 @@ export function startPolling(
           show.passWord,
         );
 
-        // Broadcast comment
+        if (result.duplicate) continue;
+
         broadcastToShow(showId, {
           type: 'comment.received',
           data: {
@@ -95,14 +118,15 @@ export function startPolling(
             userHandle: commentInfo.userHandle,
             text: commentInfo.rawText,
             parsed: result.parsed,
+            isReply: !!fbComment.parent,
+            parentCommentId: fbComment.parent?.id,
             timestamp: commentInfo.timestamp.toISOString(),
           },
         });
 
-        // Broadcast claim if created
         if (result.result && 'claimId' in result.result) {
           const r = result.result;
-          if (r.status === 'winner' || r.status === 'waitlist') {
+          if (r.status === 'winner' || r.status === 'waitlist' || r.status === 'unmatched') {
             broadcastToShow(showId, {
               type: 'claim.created',
               data: {
@@ -115,11 +139,65 @@ export function startPolling(
                 timestamp: commentInfo.timestamp.toISOString(),
               },
             });
+          } else if (r.status === 'released') {
+            broadcastToShow(showId, {
+              type: 'claim.released',
+              data: {
+                claimId: r.claimId,
+                showId,
+                itemNumber: r.itemNumber,
+                userHandle: commentInfo.userHandle,
+                promoted: r.promoted,
+                timestamp: commentInfo.timestamp.toISOString(),
+              },
+            });
+
+            if (r.item) {
+              broadcastToShow(showId, {
+                type: 'item.updated',
+                data: {
+                  itemId: r.item.id,
+                  showId,
+                  itemNumber: r.itemNumber,
+                  claimedCount: r.item.claimedCount,
+                  totalQuantity: r.item.totalQuantity,
+                  status: r.item.status,
+                },
+              });
+            }
+          }
+        }
+
+        // Auto-reply to claim comments (only for ClaimResult which has itemNumber)
+        if (autoReplySettings.autoReplyEnabled && result.result && 'itemNumber' in result.result) {
+          const r = result.result;
+          let replyCase: ReplyCase | null = null;
+          let templates: string[] = [];
+
+          if (r.status === 'winner') {
+            replyCase = 'winner';
+            templates = autoReplySettings.replyTemplatesWinner || [];
+          } else if (r.status === 'duplicate_user') {
+            replyCase = 'duplicate';
+            templates = autoReplySettings.replyTemplatesDuplicate || [];
+          } else if (r.status === 'waitlist') {
+            replyCase = 'waitlist';
+            templates = autoReplySettings.replyTemplatesWaitlist || [];
+          }
+
+          if (replyCase && templates.length > 0) {
+            sendAutoReply({
+              commentId: fbComment.id,
+              userDisplayName: commentInfo.userDisplayName,
+              itemNumber: r.itemNumber,
+              encryptedAccessToken,
+              replyCase,
+              templates,
+            });
           }
         }
       }
 
-      // Prune seen IDs to prevent memory growth (keep last 10k)
       if (state.seenCommentIds.size > 10000) {
         const arr = Array.from(state.seenCommentIds);
         state.seenCommentIds = new Set(arr.slice(arr.length - 5000));
@@ -146,8 +224,35 @@ export function startPolling(
     }
   }
 
-  // Kick off first poll
   state.timer = setTimeout(poll, 0);
+}
+
+/**
+ * Start polling comments for a live video.
+ */
+export function startPolling(
+  showId: string,
+  liveVideoId: string,
+  encryptedAccessToken: string,
+  intervalMs = DEFAULT_INTERVAL_MS,
+) {
+  if (activePollers.has(showId)) {
+    stopPolling(showId);
+  }
+
+  const state: PollingState = {
+    timer: null,
+    afterCursor: null,
+    running: true,
+    backoffMs: 0,
+    seenCommentIds: new Set(),
+    liveVideoId,
+    encryptedAccessToken,
+    intervalMs,
+  };
+
+  activePollers.set(showId, state);
+  createPollLoop(showId, state);
 }
 
 /**
@@ -174,10 +279,22 @@ function fbCommentToCommentInfo(comment: FBComment, liveVideoId: string): Commen
     platform: 'facebook',
     liveId: liveVideoId,
     commentId: comment.id,
-    platformUserId: comment.from.id,
-    userHandle: comment.from.name,
-    userDisplayName: comment.from.name,
+    platformUserId: comment.from?.id ?? 'unknown',
+    userHandle: comment.from?.name ?? 'unknown',
+    userDisplayName: comment.from?.name ?? 'unknown',
     rawText: comment.message,
     timestamp: new Date(comment.created_time),
+    parentCommentId: comment.parent?.id,
   };
+}
+
+// HMR recovery: restart any pollers whose timers were killed by module re-evaluation.
+// The Map survives via globalThis but setTimeout callbacks are lost on HMR.
+for (const [showId, state] of activePollers.entries()) {
+  if (state.running) {
+    // Clear stale timer from previous module evaluation to prevent duplicate poll loops
+    if (state.timer) clearTimeout(state.timer);
+    console.log(`[Polling ${showId}] HMR detected — restarting polling (cursor: ${state.afterCursor ?? 'none'}, seen: ${state.seenCommentIds.size})`);
+    createPollLoop(showId, state);
+  }
 }

@@ -47,79 +47,61 @@ export const stripeAdapter: IntegrationAdapter = {
 
   async createInvoice(params: InvoiceParams): Promise<InvoiceResult> {
     const stripe = getClient(params.credentialsEnc);
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const currency = params.currency || 'usd';
 
-    // Find or create customer by searching for metadata
-    const customers = await stripe.customers.search({
-      query: `metadata["platform_user_id"]:"${params.buyerPlatformId}"`,
-      limit: 1,
-    });
-
-    let customer: Stripe.Customer;
-    if (customers.data.length > 0) {
-      customer = customers.data[0];
-    } else {
-      customer = await stripe.customers.create({
-        name: params.buyerHandle,
-        email: params.buyerEmail,
-        metadata: {
-          platform_user_id: params.buyerPlatformId,
-          buyer_handle: params.buyerHandle,
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer_creation: 'always',
+      shipping_address_collection: { allowed_countries: ['US'] },
+      line_items: params.lineItems.map((item) => ({
+        price_data: {
+          currency,
+          unit_amount: item.unitAmountCents,
+          product_data: {
+            name: `#${item.itemNumber} — ${item.title}`,
+          },
         },
-      });
-    }
-
-    // Create invoice
-    const invoice = await stripe.invoices.create({
-      customer: customer.id,
-      collection_method: 'send_invoice',
-      days_until_due: 7,
-      description: params.memo || `Your claims from ${params.showName}`,
+        quantity: item.quantity,
+      })),
       metadata: {
+        show_id: params.showId,
         show_name: params.showName,
         buyer_handle: params.buyerHandle,
+        buyer_platform_id: params.buyerPlatformId,
       },
+      success_url: `${appUrl}/checkout/success`,
+      cancel_url: `${appUrl}/checkout/cancelled`,
     });
 
-    // Add line items
-    for (const item of params.lineItems) {
-      await stripe.invoiceItems.create({
-        customer: customer.id,
-        invoice: invoice.id!,
-        description: `#${item.itemNumber} — ${item.title}`,
-        quantity: item.quantity,
-        unit_amount_decimal: item.unitAmountCents.toString(),
-        currency: params.currency || 'usd',
-      });
-    }
-
-    // Finalize the invoice
-    const finalized = await stripe.invoices.finalizeInvoice(invoice.id!);
+    const amountCents = params.lineItems.reduce(
+      (sum, item) => sum + item.unitAmountCents * item.quantity,
+      0,
+    );
 
     return {
-      externalId: finalized.id!,
-      externalUrl: finalized.hosted_invoice_url || '',
-      amountCents: finalized.amount_due,
-      currency: finalized.currency,
+      externalId: session.id,
+      externalUrl: session.url || '',
+      amountCents,
+      currency,
       status: 'sent',
     };
   },
 
   async getInvoiceStatus(externalId: string, credentialsEnc: string): Promise<InvoiceStatusResult> {
     const stripe = getClient(credentialsEnc);
-    const invoice = await stripe.invoices.retrieve(externalId);
+    const session = await stripe.checkout.sessions.retrieve(externalId);
 
-    let status: InvoiceStatusResult['status'] = 'draft';
-    if (invoice.status === 'paid') status = 'paid';
-    else if (invoice.status === 'void') status = 'void';
-    else if (invoice.status === 'open') status = 'sent';
-    else if (invoice.status === 'uncollectible') status = 'error';
+    let status: InvoiceStatusResult['status'] = 'sent';
+    if (session.payment_status === 'paid') status = 'paid';
+    else if (session.status === 'expired') status = 'void';
+
+    const amountCents = session.amount_total ?? 0;
 
     return {
       status,
-      amountCents: invoice.amount_due,
-      paidAt: invoice.status_transitions?.paid_at
-        ? new Date(invoice.status_transitions.paid_at * 1000).toISOString()
-        : undefined,
+      amountCents,
+      paidAt: status === 'paid' ? new Date().toISOString() : undefined,
     };
   },
 };

@@ -7,7 +7,6 @@ import {
   exchangeForLongLivedToken,
   getConnectedPages,
 } from '@/lib/platforms/facebook/oauth';
-import { verifyAccessToken } from '@/lib/auth/jwt';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -17,27 +16,20 @@ export async function GET(req: NextRequest) {
   if (error || !code) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     return NextResponse.redirect(
-      `${appUrl}/connections?error=${encodeURIComponent(error || 'no_code')}`,
+      `${appUrl}/sales-channels?error=${encodeURIComponent(error || 'no_code')}`,
     );
   }
 
-  // Extract workspace from a cookie/state token
-  // For now, use the token from a cookie header
-  const cookieToken = req.cookies.get('auth_token')?.value;
+  // Extract workspace context from the state parameter set during OAuth start
+  const stateParam = searchParams.get('state') || '';
   let workspaceId: string | null = null;
 
-  if (cookieToken) {
-    try {
-      const payload = await verifyAccessToken(cookieToken);
-      workspaceId = payload.workspaceId;
-    } catch {
-      // Token invalid
-    }
+  try {
+    const stateData = JSON.parse(Buffer.from(stateParam, 'base64url').toString());
+    workspaceId = stateData.workspaceId || null;
+  } catch {
+    // Invalid state
   }
-
-  // Also check Authorization header forwarded via state (simplified)
-  const state = searchParams.get('state') || '';
-  // In production, validate state against stored value
 
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -53,7 +45,7 @@ export async function GET(req: NextRequest) {
     const pages = await getConnectedPages(longToken.accessToken);
 
     if (!workspaceId) {
-      return NextResponse.redirect(`${appUrl}/connections?error=no_workspace`);
+      return NextResponse.redirect(`${appUrl}/sales-channels?error=no_workspace`);
     }
 
     // Create a connection for each page
@@ -69,16 +61,26 @@ export async function GET(req: NextRequest) {
           displayName: page.name,
           encryptedAccessToken: encryptedToken,
           tokenExpiresAt: new Date(Date.now() + longToken.expiresIn * 1000),
-          scopes: ['pages_show_list', 'pages_read_engagement', 'pages_read_user_content'],
+          scopes: ['pages_show_list', 'pages_read_engagement', 'pages_read_user_content', 'pages_manage_metadata', 'pages_manage_engagement', 'pages_messaging'],
           status: 'active',
         })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: [socialConnections.workspaceId, socialConnections.platform, socialConnections.externalAccountId],
+          set: {
+            displayName: page.name,
+            encryptedAccessToken: encryptedToken,
+            tokenExpiresAt: new Date(Date.now() + longToken.expiresIn * 1000),
+            scopes: ['pages_show_list', 'pages_read_engagement', 'pages_read_user_content', 'pages_manage_metadata', 'pages_manage_engagement', 'pages_messaging'],
+            status: 'active',
+            updatedAt: new Date(),
+          },
+        });
     }
 
-    return NextResponse.redirect(`${appUrl}/connections?success=facebook&count=${pages.length}`);
+    return NextResponse.redirect(`${appUrl}/sales-channels?success=facebook&count=${pages.length}`);
   } catch (err) {
     console.error('Facebook OAuth callback error:', err);
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    return NextResponse.redirect(`${appUrl}/connections?error=oauth_failed`);
+    return NextResponse.redirect(`${appUrl}/sales-channels?error=oauth_failed`);
   }
 }

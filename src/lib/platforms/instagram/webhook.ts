@@ -26,11 +26,11 @@ type IGWebhookPayload = {
     changes: Array<{
       field: string;
       value: {
-        from: { id: string; username: string };
-        media: { id: string };
+        from: { id: string; username: string; self_ig_scoped_id?: string };
+        media: { id: string; media_product_type?: string };
         id: string;
         text: string;
-        timestamp: string;
+        timestamp?: string;
       };
     }>;
   }>;

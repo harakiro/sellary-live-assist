@@ -17,6 +17,7 @@ type Invoice = {
   currency: string | null;
   lineItems: unknown;
   externalUrl: string | null;
+  errorMessage: string | null;
   sentAt: string | null;
   paidAt: string | null;
   createdAt: string;
@@ -35,6 +36,7 @@ export function InvoicePanel({ showId, hasClaims }: InvoicePanelProps) {
     generated: number;
     failed: number;
     skipped: number;
+    errors: { buyerHandle: string | null; buyerPlatformId: string; error: string }[];
   } | null>(null);
 
   const fetchInvoices = useCallback(async () => {
@@ -54,14 +56,18 @@ export function InvoicePanel({ showId, hasClaims }: InvoicePanelProps) {
       generated: number;
       failed: number;
       skipped: number;
-      results: unknown[];
+      results: { buyerHandle: string | null; buyerPlatformId: string; status: string; error?: string }[];
     }>(`/api/shows/${showId}/invoices/generate`, { method: 'POST' });
 
     if ('data' in res) {
+      const errors = res.data.results
+        .filter((r) => r.status === 'error' && r.error)
+        .map((r) => ({ buyerHandle: r.buyerHandle, buyerPlatformId: r.buyerPlatformId, error: r.error! }));
       setGenerateResult({
         generated: res.data.generated,
         failed: res.data.failed,
         skipped: res.data.skipped,
+        errors,
       });
       fetchInvoices();
     }
@@ -110,7 +116,7 @@ export function InvoicePanel({ showId, hasClaims }: InvoicePanelProps) {
               {generating ? (
                 <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Generating...</>
               ) : (
-                'Generate Invoices'
+                'Generate Checkout Links'
               )}
             </Button>
           )}
@@ -118,10 +124,21 @@ export function InvoicePanel({ showId, hasClaims }: InvoicePanelProps) {
       </CardHeader>
       <CardContent>
         {generateResult && (
-          <div className="mb-4 text-sm bg-blue-50 text-blue-700 rounded-md px-3 py-2">
-            Generated {generateResult.generated} invoice{generateResult.generated !== 1 ? 's' : ''}
-            {generateResult.skipped > 0 && `, ${generateResult.skipped} skipped (already exist)`}
-            {generateResult.failed > 0 && `, ${generateResult.failed} failed`}
+          <div className={`mb-4 text-sm rounded-md px-3 py-2 ${generateResult.failed > 0 ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
+            <p>
+              Generated {generateResult.generated} checkout link{generateResult.generated !== 1 ? 's' : ''}
+              {generateResult.skipped > 0 && `, ${generateResult.skipped} skipped (already exist)`}
+              {generateResult.failed > 0 && `, ${generateResult.failed} failed`}
+            </p>
+            {generateResult.errors.length > 0 && (
+              <ul className="mt-1 text-xs space-y-0.5">
+                {generateResult.errors.map((e, i) => (
+                  <li key={i}>
+                    {e.buyerHandle || e.buyerPlatformId}: {e.error}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 
@@ -132,7 +149,7 @@ export function InvoicePanel({ showId, hasClaims }: InvoicePanelProps) {
         ) : invoices.length === 0 ? (
           <p className="text-sm text-gray-500 py-2">
             {hasClaims
-              ? 'No invoices generated yet. Click "Generate Invoices" to create invoices for all buyers.'
+              ? 'No checkout links generated yet. Click "Generate Checkout Links" to create payment links for all buyers.'
               : 'No claims to invoice yet.'}
           </p>
         ) : (

@@ -2,7 +2,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Send, Copy, CheckCircle } from 'lucide-react';
+import { ExternalLink, Send, Copy, CheckCircle, MessageCircle } from 'lucide-react';
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 
@@ -16,6 +16,7 @@ type InvoiceRowProps = {
     currency: string | null;
     lineItems: unknown;
     externalUrl: string | null;
+    errorMessage: string | null;
     sentAt: string | null;
     paidAt: string | null;
     createdAt: string;
@@ -46,10 +47,35 @@ function formatCents(cents: number | null, currency: string | null): string {
 export function InvoiceRow({ invoice, showId }: InvoiceRowProps) {
   const [sending, setSending] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [sendStatus, setSendStatus] = useState<'idle' | 'sent' | 'failed' | 'prompted'>('idle');
+  const [sendError, setSendError] = useState<string | null>(null);
 
   async function sendLink() {
     setSending(true);
-    await apiFetch(`/api/shows/${showId}/invoices/${invoice.id}/send`, { method: 'POST' });
+    setSendStatus('idle');
+    setSendError(null);
+
+    const res = await apiFetch<{
+      sent: boolean;
+      prompted?: boolean;
+      error?: string;
+    }>(`/api/shows/${showId}/invoices/${invoice.id}/send`, { method: 'POST' });
+
+    if ('data' in res && res.data.sent) {
+      setSendStatus('sent');
+      setTimeout(() => setSendStatus('idle'), 2000);
+    } else if ('data' in res && res.data.prompted) {
+      setSendStatus('prompted');
+    } else {
+      setSendStatus('failed');
+      const errMsg = 'data' in res ? res.data.error : 'error' in res ? res.error.message : 'Send failed';
+      setSendError(errMsg || 'DM failed — copy link instead');
+      setTimeout(() => {
+        setSendStatus('idle');
+        setSendError(null);
+      }, 8000);
+    }
+
     setSending(false);
   }
 
@@ -72,6 +98,11 @@ export function InvoiceRow({ invoice, showId }: InvoiceRowProps) {
         <div className="text-xs text-gray-500">
           {items.length} item{items.length !== 1 ? 's' : ''} &middot; {formatCents(invoice.amountCents, invoice.currency)}
         </div>
+        {invoice.status === 'error' && invoice.errorMessage && (
+          <div className="text-xs text-red-600 mt-0.5 truncate" title={invoice.errorMessage}>
+            {invoice.errorMessage}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 ml-4">
@@ -102,16 +133,40 @@ export function InvoiceRow({ invoice, showId }: InvoiceRowProps) {
         )}
 
         {invoice.status !== 'paid' && invoice.status !== 'void' && invoice.externalUrl && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={sendLink}
-            disabled={sending}
-            className="text-xs h-7"
-          >
-            <Send className="h-3 w-3 mr-1" />
-            {sending ? 'Sending...' : 'Send'}
-          </Button>
+          <div className="relative">
+            <Button
+              size="sm"
+              variant={
+                sendStatus === 'sent' ? 'default'
+                  : sendStatus === 'failed' ? 'destructive'
+                  : sendStatus === 'prompted' ? 'outline'
+                  : 'outline'
+              }
+              onClick={sendLink}
+              disabled={sending}
+              className={`text-xs h-7${sendStatus === 'prompted' ? ' border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100' : ''}`}
+            >
+              {sendStatus === 'sent' ? (
+                <><CheckCircle className="h-3 w-3 mr-1" />Sent!</>
+              ) : sendStatus === 'failed' ? (
+                <><Send className="h-3 w-3 mr-1" />Failed</>
+              ) : sendStatus === 'prompted' ? (
+                <><MessageCircle className="h-3 w-3 mr-1" />Prompted</>
+              ) : (
+                <><Send className="h-3 w-3 mr-1" />{sending ? 'Sending...' : 'Send'}</>
+              )}
+            </Button>
+            {sendError && sendStatus === 'failed' && (
+              <div className="absolute right-0 top-full mt-1 z-10 bg-red-50 border border-red-200 text-red-700 text-xs rounded px-2.5 py-1.5 w-64 shadow-sm">
+                {sendError}
+              </div>
+            )}
+            {sendStatus === 'prompted' && (
+              <div className="absolute right-0 top-full mt-1 z-10 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded px-2.5 py-1.5 w-64 shadow-sm">
+                Replied to their comment asking them to DM your Page. Click Send again once they message you.
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

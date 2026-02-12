@@ -105,6 +105,8 @@ export const shows = pgTable(
     liveUrl: text('live_url'),
     claimWord: varchar('claim_word', { length: 50 }).default('sold').notNull(),
     passWord: varchar('pass_word', { length: 50 }).default('pass').notNull(),
+    autoNumberEnabled: boolean('auto_number_enabled').default(false).notNull(),
+    autoNumberStart: integer('auto_number_start').default(1).notNull(),
     startedAt: timestamp('started_at'),
     endedAt: timestamp('ended_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -268,6 +270,7 @@ export const invoices = pgTable(
     showStatusIdx: index('invoices_show_status_idx').on(table.showId, table.status),
     workspaceCreatedIdx: index('invoices_workspace_created_idx').on(table.workspaceId, table.createdAt),
     externalIdIdx: index('invoices_external_id_idx').on(table.externalId),
+    workspaceStatusSentAtIdx: index('invoices_workspace_status_sent_at_idx').on(table.workspaceId, table.status, table.sentAt),
   }),
 );
 

@@ -4,175 +4,145 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { apiFetch } from '@/lib/api-client';
+import { formatCents } from '@/lib/utils';
 import Link from 'next/link';
-import { Tv, Link2, Plus, BarChart3 } from 'lucide-react';
+import { DollarSign, Clock, Package, Plus, ShoppingCart } from 'lucide-react';
+import { MetricCard } from '@/components/dashboard/metric-card';
+import { ActiveShowBanner } from '@/components/dashboard/active-show-banner';
+import { AttentionBanner } from '@/components/dashboard/attention-banner';
+import { RecentShowsTable } from '@/components/dashboard/recent-shows-table';
 
-type Show = {
-  id: string;
-  name: string;
-  status: string;
-  claimWord: string;
-  passWord: string;
-  startedAt: string | null;
-  endedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  workspaceId: string;
-  platform: string;
-  connectionId: string | null;
-  liveId: string | null;
-  liveUrl: string | null;
-};
-
-const statusBadgeVariant = (status: string) => {
-  switch (status) {
-    case 'active': return 'success' as const;
-    case 'paused': return 'warning' as const;
-    case 'ended': return 'secondary' as const;
-    default: return 'outline' as const;
-  }
+type DashboardMetrics = {
+  revenue: {
+    collectedCents: number;
+    pendingCents: number;
+    pendingCount: number;
+  };
+  itemsSoldThisMonth: number;
+  activeShow: { id: string; name: string } | null;
+  attention: {
+    staleCarts: number;
+    errorCarts: number;
+    stripeConnected: boolean;
+  };
+  recentShows: Array<{
+    id: string;
+    name: string;
+    status: string;
+    createdAt: string;
+    startedAt: string | null;
+    itemsSold: number;
+    revenueCollectedCents: number;
+    cartsPending: number;
+  }>;
 };
 
 export default function DashboardPage() {
   const { workspace } = useAuth();
-  const [shows, setShows] = useState<Show[]>([]);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function fetchShows() {
-    const res = await apiFetch<Show[]>('/api/shows');
-    if ('data' in res) {
-      setShows(res.data);
-    }
-    setLoading(false);
-  }
-
   useEffect(() => {
-    fetchShows();
+    async function load() {
+      const res = await apiFetch<DashboardMetrics>('/api/dashboard/metrics');
+      if ('data' in res) {
+        setMetrics(res.data);
+      }
+      setLoading(false);
+    }
+    load();
   }, []);
 
-  const totalShows = shows.length;
-  const activeShows = shows.filter(s => s.status === 'active').length;
-  const recentShows = shows.slice(0, 5);
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
+      </div>
+    );
+  }
+
+  const data = metrics!;
 
   return (
     <div>
-      <div className="mb-8">
+      {/* Section A: Welcome */}
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">
-          {workspace?.name ?? 'Dashboard'}
+          {workspace?.name ?? 'Home'}
         </h1>
-        <p className="text-gray-500 mt-1">Manage your live sales</p>
+        <p className="text-gray-500 mt-1">{today}</p>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600" />
-        </div>
-      ) : (
-        <>
-          {/* Stats Row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-2xl font-bold text-gray-900">{totalShows}</div>
-                    <div className="text-sm text-gray-500">Total Shows</div>
-                  </div>
-                  <BarChart3 className="h-8 w-8 text-gray-400" />
-                </div>
-              </CardContent>
-            </Card>
+      {/* Active Show Banner */}
+      {data.activeShow && <ActiveShowBanner show={data.activeShow} />}
 
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-2xl font-bold text-green-600">{activeShows}</div>
-                    <div className="text-sm text-gray-500">Active Shows</div>
-                  </div>
-                  <Tv className="h-8 w-8 text-green-600" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+      {/* Section B: Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <MetricCard
+          icon={<DollarSign className="h-5 w-5" />}
+          value={formatCents(data.revenue.collectedCents)}
+          label="Money Collected"
+          subtitle="this month"
+          href="/carts?status=paid"
+          color="green"
+        />
+        <MetricCard
+          icon={<Clock className="h-5 w-5" />}
+          value={formatCents(data.revenue.pendingCents)}
+          label="Pending Payments"
+          subtitle={`${data.revenue.pendingCount} cart${data.revenue.pendingCount !== 1 ? 's' : ''} waiting`}
+          href="/carts?status=pending"
+          color="amber"
+        />
+        <MetricCard
+          icon={<Package className="h-5 w-5" />}
+          value={String(data.itemsSoldThisMonth)}
+          label="Items Sold"
+          subtitle="this month"
+          href="/shows"
+          color="blue"
+        />
+      </div>
 
-          {/* Quick Actions and Recent Shows */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Tv className="h-5 w-5" />
-                  Shows
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-500 mb-4">
-                  Create and manage your live sale shows
-                </p>
-                <Link href="/shows">
-                  <Button size="sm">
-                    <Plus className="h-4 w-4 mr-1" />
-                    New Show
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
+      {/* Section C: Needs Attention */}
+      <AttentionBanner
+        staleCarts={data.attention.staleCarts}
+        errorCarts={data.attention.errorCarts}
+        stripeConnected={data.attention.stripeConnected}
+      />
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Link2 className="h-5 w-5" />
-                  Connections
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-500 mb-4">
-                  Connect your Facebook and Instagram accounts
-                </p>
-                <Link href="/connections">
-                  <Button size="sm" variant="outline">
-                    Manage Connections
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
+      {/* Section D: Quick Actions */}
+      <div className="flex gap-3 mb-6">
+        <Link href="/shows/new">
+          <Button>
+            <Plus className="h-4 w-4 mr-1.5" />
+            New Show
+          </Button>
+        </Link>
+        <Link href="/carts">
+          <Button variant="outline">
+            <ShoppingCart className="h-4 w-4 mr-1.5" />
+            View All Carts
+          </Button>
+        </Link>
+      </div>
 
-            {/* Recent Shows */}
-            <Card className="md:col-span-2 lg:col-span-1">
-              <CardHeader>
-                <CardTitle className="text-lg">Recent Shows</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {recentShows.length === 0 ? (
-                  <p className="text-sm text-gray-500">No shows yet</p>
-                ) : (
-                  <div className="space-y-3">
-                    {recentShows.map((show) => (
-                      <Link key={show.id} href={`/shows/${show.id}`}>
-                        <div className="flex items-center justify-between p-2 rounded hover:bg-gray-50 transition-colors">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 truncate">
-                              {show.name}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {new Date(show.createdAt).toLocaleDateString()}
-                            </div>
-                          </div>
-                          <Badge variant={statusBadgeVariant(show.status)} className="ml-2">
-                            {show.status}
-                          </Badge>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      )}
+      {/* Section E: Recent Shows */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Recent Shows</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RecentShowsTable shows={data.recentShows} />
+        </CardContent>
+      </Card>
     </div>
   );
 }
